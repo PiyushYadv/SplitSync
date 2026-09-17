@@ -54,7 +54,7 @@ export default function Nav() {
         <nav className="hidden md:flex items-center gap-6 flex-1">
           {NAV_ITEMS.map((item) =>
             item.external ? (
-              <a
+              <Link
                 key={item.label}
                 href={item.href}
                 target="_blank"
@@ -62,15 +62,15 @@ export default function Nav() {
                 className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
               >
                 {item.label}
-              </a>
+              </Link>
             ) : (
-              <a
+              <Link
                 key={item.label}
                 href={item.href}
                 className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
               >
                 {item.label}
-              </a>
+              </Link>
             ),
           )}
         </nav>
