@@ -1,40 +1,33 @@
 import { ArrowRight, Play, Sparkles } from "lucide-react";
 import Link from "next/link";
-import DashboardMockup from "./DasboardMockup.tsx";
+import DashboardMockup from "./DasboardMockup";
 
 export default function Hero() {
   return (
-    <section className="relative pt-32 pb-0 overflow-hidden bg-white">
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: `linear-gradient(to right, #e2e8f0 1px, transparent 1px), linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)`,
-          backgroundSize: "64px 64px",
-          opacity: 0.35,
-        }}
-      />
-      <div className="absolute inset-0 pointer-events-none bg-linear-to-b from-white via-white/90 to-white" />
+    <section className="relative pt-32 pb-0 overflow-hidden bg-white dark:bg-slate-950">
+      <div className="landing-grid absolute inset-0 pointer-events-none" />
+      <div className="absolute inset-0 pointer-events-none bg-linear-to-b from-white via-white/90 to-white dark:from-slate-950 dark:via-slate-950/90 dark:to-slate-950" />
       <div className="relative max-w-7xl mx-auto px-6">
         <div className="flex justify-center mb-7">
-          <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-full px-4 py-1.5">
+          <div className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 rounded-full px-4 py-1.5">
             <Sparkles size={13} className="text-indigo-500" />
-            <span className="text-xs font-semibold text-indigo-700">
+            <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-200">
               Introducing AI receipt scanning — now in Beta
             </span>
             <Link
               href="#ocr"
-              className="flex items-center gap-0.5 text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+              className="flex items-center gap-0.5 text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:text-indigo-500"
             >
               Learn more <ArrowRight size={11} />
             </Link>
           </div>
         </div>
-        <h1 className="text-center text-[56px] md:text-[72px] font-extrabold text-slate-900 tracking-[-0.03em] leading-[1.04] max-w-4xl mx-auto mb-6">
+        <h1 className="text-center text-[56px] md:text-[72px] font-extrabold text-slate-900 dark:text-slate-50 tracking-[-0.03em] leading-[1.04] max-w-4xl mx-auto mb-6">
           Settle expenses.
           <br />
           <span className="text-indigo-600">Not friendships.</span>
         </h1>
-        <p className="text-center text-slate-500 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed mb-10">
+        <p className="text-center text-slate-500 dark:text-slate-300 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed mb-10">
           SplitSync is the intelligent expense-splitting platform for groups.
           Track multi-currency spend, scan receipts with AI, and settle every
           trip with the fewest possible transfers.
@@ -52,7 +45,7 @@ export default function Hero() {
           </Link>
           <button
             type="button"
-            className="flex items-center gap-2 text-slate-700 hover:text-slate-900 font-semibold px-6 py-3 rounded-xl text-sm border border-slate-200 hover:border-slate-300 bg-white transition-all"
+            className="flex items-center gap-2 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white font-semibold px-6 py-3 rounded-xl text-sm border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-900 transition-all"
           >
             <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center">
               <Play
@@ -83,8 +76,8 @@ export default function Hero() {
         </div> */}
         <div className="relative max-w-6xl mx-auto">
           <div className="absolute -inset-x-20 -top-10 h-32 bg-indigo-500/8 blur-3xl pointer-events-none rounded-full" />
-          <div className="relative bg-white rounded-xl border border-slate-200 shadow-2xl shadow-slate-900/10 overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-200">
+          <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/10 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
               <div className="flex gap-1.5">
                 {["#f87171", "#fbbf24", "#34d399"].map((c) => (
                   <div
@@ -95,7 +88,7 @@ export default function Hero() {
                 ))}
               </div>
               <div className="flex-1 max-w-xs mx-auto">
-                <div className="bg-white border border-slate-200 rounded-md px-3 py-1 text-[11px] text-slate-400 text-center">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-1 text-[11px] text-slate-400 text-center">
                   app.splitsync.io/dashboard
                 </div>
               </div>
@@ -104,7 +97,7 @@ export default function Hero() {
           </div>
         </div>
       </div>
-      <div className="h-32 bg-linear-to-b from-transparent to-slate-50 -mt-0.5" />
+      <div className="h-32 bg-linear-to-b from-transparent to-slate-50 dark:to-slate-950 -mt-0.5" />
     </section>
   );
 }

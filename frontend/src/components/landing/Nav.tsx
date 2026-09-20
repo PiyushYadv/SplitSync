@@ -36,7 +36,7 @@ export default function Nav() {
     <header
       className={`fixed top-0 inset-x-0 z-50 transition-all duration-200 ${
         scrolled
-          ? "bg-white/90 backdrop-blur-xl border-b border-slate-200/80 shadow-sm"
+          ? "bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80 shadow-sm"
           : "bg-transparent"
       }`}
     >
@@ -46,7 +46,7 @@ export default function Nav() {
             <RefreshCw size={14} className="text-white" strokeWidth={2.5} />
           </div>
 
-          <span className="font-bold text-slate-900 text-sm tracking-tight">
+          <span className="font-bold text-slate-900 dark:text-slate-50 text-sm tracking-tight">
             SplitSync
           </span>
         </Link>
@@ -59,7 +59,7 @@ export default function Nav() {
                 href={item.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
+                className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
               >
                 {item.label}
               </Link>
@@ -67,7 +67,7 @@ export default function Nav() {
               <Link
                 key={item.label}
                 href={item.href}
-                className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
+                className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
               >
                 {item.label}
               </Link>
@@ -78,7 +78,7 @@ export default function Nav() {
         <div className="hidden md:flex items-center gap-3 ml-auto">
           <Link
             href="/login"
-            className="text-sm text-slate-600 hover:text-slate-900 transition-colors px-3 py-1.5"
+            className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors px-3 py-1.5"
           >
             Sign in
           </Link>
@@ -95,7 +95,7 @@ export default function Nav() {
           type="button"
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
-          className="md:hidden ml-auto text-slate-600"
+          className="md:hidden ml-auto text-slate-600 dark:text-slate-300"
           onClick={() => setOpen((value) => !value)}
         >
           {open ? <X size={20} /> : <Menu size={20} />}
@@ -103,7 +103,7 @@ export default function Nav() {
       </div>
 
       {open && (
-        <div className="md:hidden bg-white border-t border-slate-200 px-6 py-4 flex flex-col gap-3">
+        <div className="md:hidden bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 px-6 py-4 flex flex-col gap-3">
           {NAV_ITEMS.map((item) =>
             item.external ? (
               <a
@@ -111,7 +111,7 @@ export default function Nav() {
                 href={item.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-slate-600 py-1"
+                className="text-sm text-slate-600 dark:text-slate-300 py-1"
                 onClick={() => setOpen(false)}
               >
                 {item.label}
@@ -120,7 +120,7 @@ export default function Nav() {
               <a
                 key={item.label}
                 href={item.href}
-                className="text-sm text-slate-600 py-1"
+                className="text-sm text-slate-600 dark:text-slate-300 py-1"
                 onClick={() => setOpen(false)}
               >
                 {item.label}
@@ -128,10 +128,10 @@ export default function Nav() {
             ),
           )}
 
-          <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
             <Link
               href="/login"
-              className="text-sm text-slate-600 py-2"
+              className="text-sm text-slate-600 dark:text-slate-300 py-2"
               onClick={() => setOpen(false)}
             >
               Sign in

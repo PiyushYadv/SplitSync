@@ -1,26 +1,27 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-// import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check } from "lucide-react";
-import SocialButton from "@/src/features/auth/components/SocialButton";
-import FormInput from "@/src/features/auth/components/FormInput";
-import PasswordInput from "@/src/features/auth/components/PasswordInput";
+import Link from "next/link";
+
 import AuthLayout from "@/src/features/auth/components/AuthLayout";
+import PasswordInput from "@/src/features/auth/components/PasswordInput";
 import { apiRequest } from "@/src/lib/api/client";
 import { API_ENDPOINTS } from "@/src/lib/api/endpoints";
-import type { SignupResponse } from "@/src/lib/api/contracts";
 
-type SignupForm = {
-  email: string;
+type ResetPasswordForm = {
   password: string;
   confirmPassword: string;
 };
 
-export default function Signup() {
-  // const router = useRouter();
+export default function ResetPassword() {
+  const router = useRouter();
+
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token");
+
   const [done, setDone] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -30,37 +31,39 @@ export default function Signup() {
     handleSubmit,
     control,
     formState: { errors, isSubmitting },
-  } = useForm<SignupForm>();
+  } = useForm<ResetPasswordForm>();
 
   const password = useWatch({
     control,
     name: "password",
   });
 
-  async function onSubmit(data: SignupForm) {
+  async function onSubmit(data: ResetPasswordForm) {
+    if (!token) {
+      setErrorMessage("This reset link is invalid or expired");
+      return;
+    }
     setErrorMessage(null);
     try {
-      await apiRequest<SignupResponse>(API_ENDPOINTS.auth.signup, {
+      await apiRequest(API_ENDPOINTS.auth.resetPassword, {
         method: "POST",
-        body: JSON.stringify({ email: data.email, password: data.password }),
+        body: JSON.stringify({ token, password: data.password }),
       });
       setDone(true);
     } catch (error) {
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to create your account",
+        error instanceof Error ? error.message : "Unable to reset password",
       );
     }
   }
 
   return (
     <AuthLayout
-      title={done ? "Check your inbox" : "Create account"}
+      title={done ? "Password reset" : "Reset your password"}
       description={
         done
-          ? "We sent a verification link to your email"
-          : "Create your free SplitSync account"
+          ? "Your password has been successfully updated"
+          : "Choose a new password for your SplitSync account"
       }
     >
       {done ? (
@@ -69,65 +72,27 @@ export default function Signup() {
             <Check size={24} className="text-emerald-500" strokeWidth={2.5} />
           </div>
 
-          {/* <button
-            type="button"
-            onClick={() => router.push("/dashboard")}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-sm transition-colors"
-          >
-            Go to dashboard
-          </button> */}
-
-          <p className="w-full bg-indigo-50 text-indigo-600 font-bold py-3 rounded-xl text-sm text-center">
-            Check your inbox
-          </p>
-
           <button
             type="button"
-            onClick={() => setDone(false)}
-            className="mt-3 text-xs text-slate-400 hover:text-slate-600 block w-full"
+            onClick={() => router.push("/login")}
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-sm transition-colors"
           >
-            Use a different email
+            Back to login
           </button>
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
-          <div className="mb-5 flex flex-col gap-3">
-            <SocialButton provider="Google" />
-            <SocialButton provider="Github" />
-            <SocialButton provider="Apple" />
-          </div>
-
-          <div className="flex items-center gap-3 my-4">
-            <div className="flex-1 h-px bg-slate-200" />
-            <span className="text-xs text-slate-400">or</span>
-            <div className="flex-1 h-px bg-slate-200" />
-          </div>
-
           <form
             onSubmit={handleSubmit(onSubmit)}
-            className="flex flex-col gap-3"
+            className="flex flex-col gap-4"
           >
             {errorMessage && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-600">
                 {errorMessage}
               </p>
             )}
-            <FormInput
-              label="Email address"
-              type="email"
-              placeholder="you@company.com"
-              registration={register("email", {
-                required: "Email is required",
-                pattern: {
-                  value: /^\S+@\S+\.\S+$/,
-                  message: "Enter a valid email address",
-                },
-              })}
-              error={errors.email?.message}
-            />
-
             <PasswordInput
-              label="Password"
+              label="New password"
               placeholder="Min. 8 characters"
               showPassword={showPassword}
               onToggleVisibility={() => setShowPassword((prev) => !prev)}
@@ -142,7 +107,7 @@ export default function Signup() {
             />
 
             <PasswordInput
-              label="Confirm Password"
+              label="Confirm password"
               placeholder="Min. 8 characters"
               showPassword={showPassword}
               onToggleVisibility={() => setShowPassword((prev) => !prev)}
@@ -159,15 +124,16 @@ export default function Signup() {
               disabled={isSubmitting}
               className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm transition-colors mt-1 group"
             >
-              Create account
+              Reset password
               <ArrowRight
                 size={15}
                 className="group-hover:translate-x-0.5 transition-transform"
               />
             </button>
           </form>
+
           <p className="text-center text-xs text-slate-400 mt-5">
-            {"Already have an account?"}{" "}
+            Remember your password?{" "}
             <Link
               href="/login"
               className="text-indigo-600 font-semibold hover:text-indigo-500"

@@ -70,7 +70,7 @@ export default function FAQ() {
             Common questions
           </h2>
         </div>
-        <div className="flex flex-col divide-y divide-slate-200 border border-slate-200 rounded-xl overflow-hidden bg-white">
+        <div className="flex flex-col divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 rounded-xl overflow-hidden bg-white">
           {FAQS.map(({ q, a }, i) => (
             <div key={q}>
               <button
