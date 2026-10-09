@@ -1,15 +1,17 @@
 "use client";
 
 import { ArrowRight, LogOut } from "lucide-react";
-import type { GroupListItem } from "@/src/features/groups/types";
 import { GROUP_COLOR_STYLES } from "@/src/features/groups/types";
+import { formatRelativeTime } from "@/src/lib/format/date";
+import { formatMoney } from "@/src/lib/format/money";
+import type { GroupSummary } from "@/src/types/domain";
 
 export default function GroupCard({
   group,
   onOpen,
   onLeave,
 }: {
-  group: GroupListItem;
+  group: GroupSummary;
   onOpen: () => void;
   onLeave: () => void;
 }) {
@@ -25,37 +27,38 @@ export default function GroupCard({
         </button>
         <button className="flex-1 min-w-0 text-left" onClick={onOpen}>
           <div className="flex items-center gap-2 mb-0.5">
-            <h3 className="text-sm font-bold text-slate-900">{group.name}</h3>
+            <h3 className="text-sm font-bold text-slate-900 truncate">{group.name}</h3>
             <span
-              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ring-1 ${styles.badge}`}
+              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ring-1 capitalize ${styles.badge}`}
             >
               {group.status}
             </span>
           </div>
           <p className="text-xs text-slate-400">
-            {group.memberCount} members · Last activity {group.lastActivity}
+            {group.memberCount} member{group.memberCount === 1 ? "" : "s"} ·
+            Last activity {formatRelativeTime(group.lastActivity)}
           </p>
         </button>
         <button className="text-right shrink-0" onClick={onOpen}>
           <p className="text-sm font-bold text-slate-900">
-            ${group.totalSpend.toLocaleString()}
+            {formatMoney(group.totalSpend, group.baseCurrency)}
           </p>
           <p className="text-xs text-slate-400">total spend</p>
         </button>
-        <button className="text-right shrink-0 w-24" onClick={onOpen}>
-          {group.balance !== 0 && (
+        <button className="text-right shrink-0 w-28" onClick={onOpen}>
+          {group.balance !== 0 ? (
             <>
               <p
                 className={`text-sm font-bold ${group.balance > 0 ? "text-emerald-600" : "text-rose-500"}`}
               >
-                {group.balance > 0
-                  ? `+$${group.balance}`
-                  : `-$${Math.abs(group.balance)}`}
+                {formatMoney(Math.abs(group.balance), group.baseCurrency)}
               </p>
               <p className="text-xs text-slate-400">
                 {group.balance > 0 ? "you are owed" : "you owe"}
               </p>
             </>
+          ) : (
+            <p className="text-xs text-slate-400">settled up</p>
           )}
         </button>
         <div className="flex items-center gap-2 shrink-0">

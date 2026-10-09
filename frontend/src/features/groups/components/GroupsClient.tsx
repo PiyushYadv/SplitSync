@@ -1,29 +1,43 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bell, Plus, Search, Users, TrendingUp } from "lucide-react";
+import { Bell, Plus, Search, Users, TrendingUp, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { GroupListItem } from "@/src/features/groups/types";
 import GroupCard from "@/src/features/groups/components/GroupCard";
 import CreateGroupModal from "@/src/features/groups/components/CreateGroupModal";
 import LeaveGroupModal from "@/src/features/groups/components/LeaveGroupModal";
-import { createGroup } from "@/src/lib/data/mutations";
-import { PENDING_INVITATIONS, type Invitation } from "@/src/data/groupData";
+import { errorMessage } from "@/src/lib/api/client";
+import {
+  useAcceptInvitation,
+  useDeclineInvitation,
+  useLeaveGroup,
+} from "@/src/lib/data/mutations";
+import { useDashboard, useGroups, useInvitations } from "@/src/lib/data/queries";
+import { formatMoney } from "@/src/lib/format/money";
+import type { DashboardData, GroupSummary, Invitation } from "@/src/types/domain";
 
 export default function GroupsClient({
   initialGroups,
+  initialInvitations,
+  initialDashboard,
 }: {
-  initialGroups: GroupListItem[];
+  initialGroups: GroupSummary[];
+  initialInvitations: Invitation[];
+  initialDashboard: DashboardData;
 }) {
   const router = useRouter();
-  const [groups, setGroups] = useState(initialGroups);
+  const { data: groups = initialGroups } = useGroups(initialGroups);
+  const { data: invitations = initialInvitations } = useInvitations(initialInvitations);
+  // Group totals are in each group's own currency; the dashboard has them converted.
+  const { data: dashboard = initialDashboard } = useDashboard(initialDashboard);
+  const acceptInvitation = useAcceptInvitation();
+  const declineInvitation = useDeclineInvitation();
+  const leaveGroup = useLeaveGroup();
+
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [leaveTarget, setLeaveTarget] = useState<GroupListItem | null>(null);
-  const [invitations, setInvitations] =
-    useState<Invitation[]>(PENDING_INVITATIONS);
-  const [mutationError, setMutationError] = useState<string | null>(null);
-  void mutationError;
+  const [leaveTarget, setLeaveTarget] = useState<GroupSummary | null>(null);
+
   const visible = useMemo(
     () =>
       groups.filter((group) =>
@@ -31,46 +45,15 @@ export default function GroupsClient({
       ),
     [groups, search],
   );
-  const handleCreate = async (group: GroupListItem) => {
-    setMutationError(null);
-    setGroups((current) => [...current, group]);
-    if (process.env.NEXT_PUBLIC_DATA_SOURCE === "api") {
-      try {
-        await createGroup({
-          name: group.name,
-          emoji: group.emoji,
-          color: group.color,
-          memberIds: [],
-        });
-      } catch (error) {
-        setGroups((current) => current.filter((item) => item.id !== group.id));
-        setMutationError(
-          error instanceof Error ? error.message : "Unable to create group",
-        );
-      }
-    }
-  };
-  const active = groups.filter((group) => group.status === "active").length;
-  const total = groups.reduce((sum, group) => sum + group.totalSpend, 0);
-  const acceptInvitation = (invitation: Invitation) => {
-    setInvitations((current) =>
-      current.filter((item) => item.id !== invitation.id),
-    );
-    setGroups((current) => [
-      ...current,
-      {
-        id: invitation.id,
-        name: invitation.groupName,
-        emoji: invitation.emoji,
-        color: "indigo",
-        memberCount: invitation.memberCount,
-        totalSpend: 0,
-        balance: 0,
-        status: "active",
-        lastActivity: "Just now",
-      },
-    ]);
-  };
+  // Settled groups still count; only archived ones drop out.
+  const groupCount = groups.filter((group) => group.status !== "archived").length;
+  const invitationError = acceptInvitation.error ?? declineInvitation.error;
+  const respondingTo = acceptInvitation.isPending
+    ? acceptInvitation.variables
+    : declineInvitation.isPending
+      ? declineInvitation.variables
+      : null;
+
   return (
     <div className="flex-1 overflow-auto p-6 bg-slate-50">
       <div className="max-w-5xl mx-auto">
@@ -97,6 +80,11 @@ export default function GroupsClient({
                 {invitations.length}
               </span>
             </div>
+            {invitationError && (
+              <p className="mb-2 text-xs text-rose-600">
+                {errorMessage(invitationError)}
+              </p>
+            )}
             <div className="flex flex-col gap-2">
               {invitations.map((invitation) => (
                 <div
@@ -115,28 +103,27 @@ export default function GroupsClient({
                         Invited
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-400 truncate">
                       <span className="font-medium text-slate-600">
-                        {invitation.invitedBy}
+                        {invitation.invitedBy.name}
                       </span>{" "}
-                      added you · {invitation.memberCount} members ·{" "}
-                      {invitation.preview}
+                      invited you · {invitation.memberCount} member
+                      {invitation.memberCount === 1 ? "" : "s"}
+                      {invitation.preview ? ` · ${invitation.preview}` : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() =>
-                        setInvitations((current) =>
-                          current.filter((item) => item.id !== invitation.id),
-                        )
-                      }
-                      className="text-xs font-semibold text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg"
+                      disabled={respondingTo === invitation.id}
+                      onClick={() => declineInvitation.mutate(invitation.id)}
+                      className="text-xs font-semibold text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg disabled:opacity-50"
                     >
                       Decline
                     </button>
                     <button
-                      onClick={() => acceptInvitation(invitation)}
-                      className="text-xs font-semibold text-white bg-indigo-600 px-3 py-1.5 rounded-lg"
+                      disabled={respondingTo === invitation.id}
+                      onClick={() => acceptInvitation.mutate(invitation.id)}
+                      className="text-xs font-semibold text-white bg-indigo-600 px-3 py-1.5 rounded-lg disabled:opacity-50"
                     >
                       Accept
                     </button>
@@ -147,18 +134,16 @@ export default function GroupsClient({
           </div>
         )}
         <div className="grid grid-cols-3 gap-4 mb-5">
-          <Metric icon={Users} label="Active Groups" value={String(active)} />
+          <Metric icon={Users} label="Your Groups" value={String(groupCount)} />
           <Metric
             icon={TrendingUp}
             label="Total Across Groups"
-            value={`$${total.toLocaleString()}`}
+            value={formatMoney(dashboard.summary.totalSpend, dashboard.summary.currency)}
           />
           <Metric
-            icon={Users}
-            label="Total Members"
-            value={String(
-              groups.reduce((sum, group) => sum + group.memberCount, 0),
-            )}
+            icon={Wallet}
+            label="Your Net Balance"
+            value={formatMoney(dashboard.summary.netBalance, dashboard.summary.currency)}
           />
         </div>
         <div className="relative mb-4">
@@ -179,12 +164,17 @@ export default function GroupsClient({
               key={group.id}
               group={group}
               onOpen={() => router.push(`/groups/${group.id}`)}
-              onLeave={() => setLeaveTarget(group)}
+              onLeave={() => {
+                leaveGroup.reset();
+                setLeaveTarget(group);
+              }}
             />
           ))}
           {visible.length === 0 && (
             <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-sm text-slate-400">
-              No groups found.
+              {groups.length === 0
+                ? "You're not in any groups yet. Create one to start splitting expenses."
+                : "No groups match your search."}
             </div>
           )}
         </div>
@@ -192,19 +182,23 @@ export default function GroupsClient({
       {showCreate && (
         <CreateGroupModal
           onClose={() => setShowCreate(false)}
-          onCreate={handleCreate}
+          onCreated={(group) => {
+            setShowCreate(false);
+            router.push(`/groups/${group.id}`);
+          }}
         />
       )}
       {leaveTarget && (
         <LeaveGroupModal
           name={leaveTarget.name}
+          pending={leaveGroup.isPending}
+          error={leaveGroup.isError ? errorMessage(leaveGroup.error) : null}
           onClose={() => setLeaveTarget(null)}
-          onConfirm={() => {
-            setGroups((current) =>
-              current.filter((group) => group.id !== leaveTarget.id),
-            );
-            setLeaveTarget(null);
-          }}
+          onConfirm={() =>
+            leaveGroup.mutate(leaveTarget.id, {
+              onSuccess: () => setLeaveTarget(null),
+            })
+          }
         />
       )}
     </div>

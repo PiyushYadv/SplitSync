@@ -1,22 +1,4 @@
-export type GroupColor =
-  | "emerald"
-  | "indigo"
-  | "amber"
-  | "rose"
-  | "violet"
-  | "sky";
-
-export type GroupListItem = {
-  id: string;
-  name: string;
-  emoji: string;
-  color: GroupColor;
-  memberCount: number;
-  totalSpend: number;
-  balance: number;
-  status: "active" | "settled";
-  lastActivity: string;
-};
+import type { GroupColor } from "@/src/types/domain";
 
 export const GROUP_COLOR_STYLES: Record<
   GroupColor,

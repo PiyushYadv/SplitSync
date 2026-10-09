@@ -1,17 +1,66 @@
 openapi: 3.0.3
 info:
   title: SplitSync REST API
-  description: Collaborative Expense Splitting & Debt Optimization Engine API
+  description: |
+    Collaborative expense splitting and debt optimization API.
+
+    **Authentication.** `POST /auth/login` sets an HttpOnly `splitsync_session` cookie backed by Redis.
+    Endpoints marked `security: []` are public; every other one requires the cookie, and missing or
+    expired sessions get a JSON 401.
+
+    **Google and GitHub sign-in** is a browser redirect flow handled by Spring Security, offered only for
+    providers configured on the server (see `GET /config`). The browser opens
+    `/auth/oauth/{google|github}`; the provider calls back to `/auth/oauth/callback/{provider}` (register
+    this URL with the provider), which sets the session cookie and redirects to the frontend's
+    `/dashboard`, or to `/login?error=<code>` on failure (`email_not_verified`, `access_denied`,
+    `oauth_failed`, …). Accounts are matched by verified email.
+
+    **Emailed links** (verification, password reset, email change) point at frontend pages that POST the
+    `token` to the endpoints below. Tokens are single-use; an unknown, used or expired one returns 400
+    `INVALID_TOKEN`.
+
+    **Money.** Amounts are JSON numbers with two decimal places, computed with decimal arithmetic on the
+    server. Each group has a `baseCurrency`; expenses entered in another currency are converted once using
+    a snapshot exchange rate, and all balances and settlements are in the group's base currency.
+    Dashboard and analytics totals are converted to the user's preferred currency.
+
+    **Timestamps** are ISO-8601 UTC strings with milliseconds, e.g. `2026-10-09T18:20:50.381Z`.
+
+    **Idempotency.** `POST /expenses` and `POST /settlements/{id}/pay` accept an `Idempotency-Key`
+    header. Retrying with the same key returns the original result; reusing a key with a different body
+    returns 422 `IDEMPOTENCY_KEY_REUSED`.
+
+    **Rate limits.** Login, signup and forgot-password are limited per client IP; user search, receipt
+    scanning, resending verification and email changes per user. Exceeding a limit returns 429
+    `RATE_LIMITED` with a `Retry-After` header.
   version: 1.0.0
 servers:
   - url: http://localhost:8080/api
-    description: Local Spring Boot Development Server
+    description: Local Spring Boot development server
+
+security:
+  - sessionCookie: []
+
+tags:
+  - name: Authentication
+  - name: Users
+  - name: Groups
+  - name: Invitations
+  - name: Expenses
+  - name: Settlements
+  - name: Dashboard
+  - name: Analytics
+  - name: Notifications
+  - name: Settings
+  - name: Receipts
+  - name: Meta
 
 paths:
   /auth/signup:
     post:
       summary: Register a new user
       tags: [Authentication]
+      security: []
       requestBody:
         required: true
         content:
@@ -20,12 +69,14 @@ paths:
               type: object
               required: [name, email, password]
               properties:
-                name: { type: string, example: "Piyush Yadav" }
+                name: { type: string, maxLength: 255, example: "Piyush Yadav" }
                 email: { type: string, format: email, example: "piyush@example.com" }
-                password: { type: string, format: password, minLength: 8, example: "password123" }
+                password: { type: string, format: password, minLength: 8, maxLength: 72 }
       responses:
         '200':
-          description: Registration successful
+          description: |
+            Registered, and a verification email is sent. The account can sign in right away
+            (`verificationRequired` is always false); `emailVerified` on the user tracks the address.
           content:
             application/json:
               schema:
@@ -33,11 +84,15 @@ paths:
                 properties:
                   userId: { type: string, format: uuid }
                   verificationRequired: { type: boolean }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /auth/login:
     post:
-      summary: Authenticate user and initiate Redis session
+      summary: Authenticate and start a session
       tags: [Authentication]
+      security: []
       requestBody:
         required: true
         content:
@@ -46,55 +101,155 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email: { type: string, format: email, example: "piyush@example.com" }
-                password: { type: string, format: password, example: "password123" }
+                email: { type: string, format: email }
+                password: { type: string, format: password }
       responses:
         '200':
-          description: Login successful, sets splitsync_session cookie
+          description: Logged in; sets the session cookie
           headers:
             Set-Cookie:
               schema:
                 type: string
-                example: "splitsync_session=abc123xyz; Path=/; HttpOnly; SameSite=Lax"
+                example: "splitsync_session=70b8f971-6b32-4339-af86-b3a86a27a0ce; Path=/; HttpOnly; SameSite=Lax"
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  user:
-                    $ref: '#/components/schemas/ApiUser'
-                  expiresAt:
-                    type: string
-                    format: date-time
+                  user: { $ref: '#/components/schemas/ApiUser' }
+                  expiresAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /auth/logout:
     post:
-      summary: Invalidate current session and clear cookie
+      summary: Invalidate the session and clear the cookie
       tags: [Authentication]
+      security: []
       responses:
-        '204':
-          description: Successfully logged out
+        '204': { description: Logged out }
 
   /auth/me:
     get:
-      summary: Get currently authenticated user profile
+      summary: Current user
       tags: [Authentication]
       responses:
         '200':
-          description: Authenticated user details
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/forgot-password:
+    post:
+      summary: Email a password reset link
+      description: Always 204, whether or not an account uses the email, so it can't reveal who has one.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '204': { description: Sent if the account exists }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/reset-password:
+    post:
+      summary: Set a new password from a reset link
+      description: Link valid for 30 minutes. Signs the account out of every session and marks the email verified.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, format: password, minLength: 8, maxLength: 72 }
+      responses:
+        '204': { description: Password changed }
+        '400': { $ref: '#/components/responses/InvalidToken' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /auth/verify-email:
+    post:
+      summary: Verify your email from the emailed link
+      description: Link valid for 24 hours, and only for the address it was sent to.
+      tags: [Authentication]
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/Token' }
+      responses:
+        '204': { description: Verified }
+        '400': { $ref: '#/components/responses/InvalidToken' }
+
+  /auth/verify-email/resend:
+    post:
+      summary: Send a new verification email
+      description: Earlier verification links stop working.
+      tags: [Authentication]
+      responses:
+        '204': { description: Sent }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/confirm-email-change:
+    post:
+      summary: Apply an email change from the link sent to the new address
+      description: |
+        Public, since the link may be opened in a browser that isn't signed in. Existing sessions stay
+        signed in, and the old address is notified.
+      tags: [Authentication]
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/Token' }
+      responses:
+        '204': { description: Email changed }
+        '400': { $ref: '#/components/responses/InvalidToken' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /config:
+    get:
+      summary: Optional features configured on this server
+      description: Lets the frontend show only working buttons.
+      tags: [Meta]
+      security: []
+      responses:
+        '200':
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiUser'
-        '401':
-          $ref: '#/components/responses/UnauthorizedError'
+                type: object
+                properties:
+                  oauthProviders:
+                    type: array
+                    items: { type: string, enum: [google, github] }
+                  receiptScanning: { type: boolean }
 
-  /groups:
+  /users/search:
     get:
-      summary: List groups for the authenticated user
-      tags: [Groups]
+      summary: Search users by username prefix or name
+      description: Excludes the current user. Never returns other users' email addresses.
+      tags: [Users]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: At least 2 characters; a leading "@" is ignored.
+          schema: { type: string, minLength: 2 }
       responses:
         '200':
+          description: OK
           content:
             application/json:
               schema:
@@ -102,11 +257,47 @@ paths:
                 properties:
                   data:
                     type: array
-                    items:
-                      $ref: '#/components/schemas/GroupSummary'
+                    items: { $ref: '#/components/schemas/UserSearchResult' }
+                  total: { type: integer }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /friends:
+    get:
+      summary: Users who share at least one group with you
+      tags: [Users]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Friend' }
+                  total: { type: integer }
+
+  /groups:
+    get:
+      summary: Groups you belong to, most recently active first
+      tags: [Groups]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/GroupSummary' }
                   total: { type: integer }
     post:
-      summary: Create a new expense group
+      summary: Create a group
+      description: You become the owner. Users in `memberIds` receive invitations; they join when they accept.
       tags: [Groups]
       requestBody:
         required: true
@@ -116,128 +307,60 @@ paths:
               type: object
               required: [name, emoji, color]
               properties:
-                name: { type: string, example: "Trip to Tokyo" }
-                emoji: { type: string, example: "✈️" }
-                color: { type: string, example: "indigo" }
+                name: { type: string, maxLength: 255, example: "Trip to Tokyo" }
+                emoji: { type: string, maxLength: 20, example: "✈️" }
+                color: { type: string, enum: [emerald, indigo, amber, rose, violet, sky] }
+                baseCurrency:
+                  type: string
+                  description: ISO 4217 code. Defaults to your preferred currency.
+                  example: USD
                 memberIds:
                   type: array
+                  maxItems: 50
                   items: { type: string, format: uuid }
       responses:
         '201':
-          description: Group created
+          description: Created
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/GroupDetail'
+              schema: { $ref: '#/components/schemas/GroupDetail' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /groups/{id}:
     get:
-      summary: Get group details with members, expenses, and settlements
+      summary: Group detail with members, expenses and settlements
       tags: [Groups]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+      parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200':
+          description: OK
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/GroupDetail'
+              schema: { $ref: '#/components/schemas/GroupDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  /groups/{id}/leave:
+  /groups/{id}/invitations:
     post:
-      summary: Leave a group
+      summary: Invite users to a group
+      description: Any member can invite. Existing members are skipped; existing pending invitations are returned as-is.
       tags: [Groups]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '204':
-          description: Left group successfully
-
-  /expenses:
-    get:
-      summary: List expenses with optional filters
-      tags: [Expenses]
-      parameters:
-        - name: groupId
-          in: query
-          schema: { type: string, format: uuid }
-        - name: category
-          in: query
-          schema: { type: string }
-        - name: from
-          in: query
-          schema: { type: string, format: date-time }
-        - name: to
-          in: query
-          schema: { type: string, format: date-time }
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Expense'
-                  total: { type: integer }
-    post:
-      summary: Create a new expense with itemized splits
-      tags: [Expenses]
+      parameters: [{ $ref: '#/components/parameters/Id' }]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [groupId, title, amount, currency, paidByUserId, category]
+              required: [userIds]
               properties:
-                groupId: { type: string, format: uuid }
-                title: { type: string, example: "Villa Rental" }
-                amount: { type: number, example: 480.00 }
-                currency: { type: string, example: "USD" }
-                paidByUserId: { type: string, format: uuid }
-                category: { type: string, example: "Accommodation" }
-                splitType:
-                  type: string
-                  enum: [equal, exact, percentage]
-                  default: equal
-                splits:
+                userIds:
                   type: array
-                  items:
-                    type: object
-                    properties:
-                      userId: { type: string, format: uuid }
-                      amount: { type: number }
-                      percentage: { type: number }
+                  minItems: 1
+                  maxItems: 50
+                  items: { type: string, format: uuid }
       responses:
         '201':
-          description: Expense recorded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Expense'
-
-  /settlements:
-    get:
-      summary: List settlements
-      tags: [Settlements]
-      parameters:
-        - name: groupId
-          in: query
-          schema: { type: string, format: uuid }
-        - name: status
-          in: query
-          schema: { type: string, enum: [pending, paid] }
-      responses:
-        '200':
+          description: Created
           content:
             application/json:
               schema:
@@ -245,31 +368,211 @@ paths:
                 properties:
                   data:
                     type: array
-                    items:
-                      $ref: '#/components/schemas/Settlement'
+                    items: { $ref: '#/components/schemas/Invitation' }
+                  total: { type: integer }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /groups/{id}/leave:
+    post:
+      summary: Leave a group
+      description: |
+        Requires a zero balance in the group. If the owner leaves, the longest-standing member becomes owner.
+        If the last member leaves, the group is deleted.
+      tags: [Groups]
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '204': { description: Left the group }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /invitations:
+    get:
+      summary: Invitations sent to you
+      tags: [Invitations]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, accepted, declined], default: pending }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Invitation' }
+                  total: { type: integer }
+
+  /invitations/{id}/accept:
+    post:
+      summary: Accept an invitation and join the group
+      description: Idempotent for an already-accepted invitation. Only the invitee can accept.
+      tags: [Invitations]
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /invitations/{id}/decline:
+    post:
+      summary: Decline an invitation
+      description: Idempotent for an already-declined invitation. Only the invitee can decline.
+      tags: [Invitations]
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /expenses:
+    get:
+      summary: Expenses in your groups, newest first
+      description: Cursor-paginated. Pass `nextCursor` from the previous page as `cursor`.
+      tags: [Expenses]
+      parameters:
+        - { name: groupId, in: query, schema: { type: string, format: uuid } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Expense' }
+                  total: { type: integer, description: Matches across all pages }
+                  nextCursor: { type: string, nullable: true }
+    post:
+      summary: Record an expense
+      description: |
+        Shares are computed on the server from the base-currency amount and always add up to it exactly.
+        - `equal`: `splits` lists who shares it (`userId` only). Omit `splits` to share between all members.
+        - `exact`: every split needs `amount` in the expense's currency; they must add up to `amount`.
+        - `percentage`: every split needs `percentage`; they must add up to 100.
+      tags: [Expenses]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [groupId, title, amount, currency, paidByUserId]
+              properties:
+                groupId: { type: string, format: uuid }
+                title: { type: string, maxLength: 255, example: "Villa rental" }
+                amount: { type: number, minimum: 0.01, example: 480.00 }
+                currency: { type: string, example: "USD" }
+                paidByUserId: { type: string, format: uuid }
+                category: { type: string, maxLength: 100, default: Other, example: "Accommodation" }
+                splitType: { type: string, enum: [equal, exact, percentage], default: equal }
+                splits:
+                  type: array
+                  items:
+                    type: object
+                    required: [userId]
+                    properties:
+                      userId: { type: string, format: uuid }
+                      amount: { type: number }
+                      percentage: { type: number }
+                occurredAt: { type: string, format: date-time, description: Defaults to now }
+                receiptUrl: { type: string, maxLength: 1024 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '503':
+          description: Exchange rates unavailable (`FX_UNAVAILABLE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+
+  /expenses/{id}:
+    get:
+      summary: One expense
+      tags: [Expenses]
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /settlements:
+    get:
+      summary: Settlements in your groups, newest first
+      description: |
+        Pending settlements are the optimized transfers that would clear each group's balances; they are
+        recalculated after every expense or payment. Cancelled settlements are excluded unless requested.
+      tags: [Settlements]
+      parameters:
+        - { name: groupId, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, paid, cancelled] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Settlement' }
+                  total: { type: integer }
 
   /settlements/{id}/pay:
     post:
       summary: Mark a settlement as paid
+      description: Only the payer or the recipient can do this. Paying an already-paid settlement returns it unchanged.
       tags: [Settlements]
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
+          description: OK
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Settlement'
+              schema: { $ref: '#/components/schemas/Settlement' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /dashboard:
     get:
-      summary: Unified dashboard summary
+      summary: Dashboard overview
       tags: [Dashboard]
       responses:
         '200':
+          description: OK
           content:
             application/json:
               schema:
@@ -277,10 +580,12 @@ paths:
                 properties:
                   summary:
                     type: object
+                    description: Converted to `currency`, the user's preferred currency.
                     properties:
-                      totalSpend: { type: number }
+                      totalSpend: { type: number, description: Total spend of all your groups }
                       youOwe: { type: number }
                       youAreOwed: { type: number }
+                      netBalance: { type: number }
                       pendingSettlements: { type: integer }
                       currency: { type: string }
                   groups:
@@ -288,17 +593,38 @@ paths:
                     items: { $ref: '#/components/schemas/GroupSummary' }
                   expenses:
                     type: array
+                    description: The 10 most recent expenses across your groups
                     items: { $ref: '#/components/schemas/Expense' }
                   settlements:
                     type: array
+                    description: Pending settlements where you pay or receive
                     items: { $ref: '#/components/schemas/Settlement' }
+
+  /analytics/summary:
+    get:
+      summary: Spending insights
+      description: Defaults to the last 12 calendar months (UTC) in your preferred currency. Months are UTC.
+      tags: [Analytics]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: groupId, in: query, schema: { type: string, format: uuid } }
+        - { name: currency, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Analytics' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /notifications:
     get:
-      summary: Get user notifications
+      summary: Your 50 most recent notifications
       tags: [Notifications]
       responses:
         '200':
+          description: OK
           content:
             application/json:
               schema:
@@ -306,48 +632,57 @@ paths:
                 properties:
                   data:
                     type: array
-                    items:
-                      $ref: '#/components/schemas/Notification'
+                    items: { $ref: '#/components/schemas/Notification' }
                   unreadCount: { type: integer }
 
   /notifications/{id}/read:
     post:
-      summary: Mark notification as read
+      summary: Mark a notification as read (idempotent)
       tags: [Notifications]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+      parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200':
-          description: Marked as read
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /notifications/read-all:
+    post:
+      summary: Mark all your notifications as read
+      tags: [Notifications]
+      responses:
+        '204': { description: Done }
 
   /notifications/{id}:
     delete:
-      summary: Dismiss notification
+      summary: Dismiss a notification (idempotent)
       tags: [Notifications]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+      parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
-        '204':
-          description: Notification deleted
+        '204': { description: Dismissed (or already gone) }
 
   /me/settings:
     get:
-      summary: Get user preferences
+      summary: Your preferences
       tags: [Settings]
       responses:
         '200':
+          description: OK
           content:
             application/json:
-              schema:
-                type: object
+              schema: { $ref: '#/components/schemas/Settings' }
     patch:
-      summary: Update user preferences
+      summary: Save one settings section
+      description: |
+        Each section accepts only its own keys:
+        - `profile`: `name`, `username` (409 `USERNAME_TAKEN` if taken), `avatarUrl`
+        - `notifications`: any of `expense`, `settlement`, `reminder`, `digest` (booleans)
+        - `currency`: `currency` (also the default for new groups)
+        - `appearance`: `theme` (`system`|`light`|`dark`), `language`, `dateFormat` (`MM/DD/YYYY`|`DD/MM/YYYY`|`YYYY-MM-DD`)
+        - `security`: `currentPassword`, `newPassword`; signs out all your other sessions. Accounts
+          without a password (`profile.hasPassword: false`) send only `newPassword`.
       tags: [Settings]
       requestBody:
         required: true
@@ -357,23 +692,156 @@ paths:
               type: object
               required: [section, values]
               properties:
-                section: { type: string }
-                values: { type: object }
+                section: { type: string, enum: [profile, notifications, currency, appearance, security] }
+                values: { type: object, additionalProperties: true, example: { theme: dark } }
       responses:
         '200':
-          description: Updated settings
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /me/email:
+    post:
+      summary: Start an email change
+      description: |
+        Emails a confirmation link (valid 24 hours) to the new address; nothing changes until it is opened
+        (`POST /auth/confirm-email-change`). `currentPassword` is required unless the account has no password.
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                currentPassword: { type: string, format: password }
+      responses:
+        '202': { description: Confirmation link sent }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /receipts/scan:
+    post:
+      summary: Read a receipt photo to prefill an expense
+      description: |
+        Requires receipt scanning to be configured (`GET /config`). The image is sent to the OCR provider
+        and not stored. Fields that couldn't be read are omitted; `category` is one of the expense categories.
+      tags: [Receipts]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, WebP, HEIC or PDF, up to 10 MB
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScannedReceipt' }
+        '400': { description: No file attached }
+        '413': { description: File over 10 MB }
+        '422':
+          description: Unsupported file type (`VALIDATION_ERROR`), or no receipt total found (`RECEIPT_UNREADABLE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: Scanning not configured or provider unavailable (`RECEIPT_SCAN_UNAVAILABLE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiErrorResponse' }
 
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: splitsync_session
+
+  requestBodies:
+    Token:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [token]
+            properties:
+              token: { type: string, description: The token from the emailed link }
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Unique per logical operation, 1-255 characters. Remembered for 24 hours.
+      schema: { type: string, maxLength: 255 }
+
   schemas:
     ApiUser:
       type: object
-      required: [id, name, email]
+      required: [id, name, email, emailVerified]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         email: { type: string, format: email }
-        username: { type: string }
+        username: { type: string, example: "@piyush" }
         avatarUrl: { type: string, nullable: true }
+        emailVerified: { type: boolean }
+
+    UserSummary:
+      type: object
+      description: Public view of a user. `email` is only present for yourself.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        username: { type: string, example: "@alice.chen" }
+        initials: { type: string, example: "AC" }
+        color: { type: string, example: "#10b981" }
+        avatarUrl: { type: string, nullable: true }
+
+    UserSearchResult:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        username: { type: string }
+        initials: { type: string }
+        color: { type: string }
+        avatarUrl: { type: string, nullable: true }
+        mutualCount: { type: integer, description: Friends you have in common }
+        friend: { type: boolean, description: You already share a group }
+
+    Friend:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        username: { type: string }
+        initials: { type: string }
+        color: { type: string }
+        avatarUrl: { type: string, nullable: true }
+        sharedGroupCount: { type: integer }
 
     GroupSummary:
       type: object
@@ -382,11 +850,20 @@ components:
         name: { type: string }
         emoji: { type: string }
         color: { type: string }
+        baseCurrency: { type: string }
         memberCount: { type: integer }
-        totalSpend: { type: number }
-        balance: { type: number }
-        status: { type: string }
-        lastActivity: { type: string }
+        totalSpend: { type: number, description: In baseCurrency }
+        balance: { type: number, description: Your net position in baseCurrency; positive means you are owed }
+        status: { type: string, enum: [active, settled, archived] }
+        lastActivity: { type: string, format: date-time }
+
+    GroupMember:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          properties:
+            role: { type: string, enum: [owner, admin, member] }
+            balance: { type: number }
 
     GroupDetail:
       type: object
@@ -395,17 +872,39 @@ components:
         name: { type: string }
         emoji: { type: string }
         color: { type: string }
-        status: { type: string }
+        baseCurrency: { type: string }
+        status:
+          type: string
+          enum: [active, settled, archived]
+          description: "`settled` when the group has expenses and every balance is zero"
         members:
           type: array
-          items: { $ref: '#/components/schemas/ApiUser' }
+          items: { $ref: '#/components/schemas/GroupMember' }
         expenses:
           type: array
           items: { $ref: '#/components/schemas/Expense' }
         settlements:
           type: array
+          description: Pending and paid
           items: { $ref: '#/components/schemas/Settlement' }
+        totalSpend: { type: number }
         balance: { type: number }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Invitation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        groupName: { type: string }
+        emoji: { type: string }
+        invitedBy: { $ref: '#/components/schemas/UserSummary' }
+        invitedUser: { $ref: '#/components/schemas/UserSummary' }
+        memberCount: { type: integer }
+        preview: { type: string, nullable: true, example: "Flight, Hotel, Dinner…" }
+        status: { type: string, enum: [pending, accepted, declined] }
+        createdAt: { type: string, format: date-time }
 
     Expense:
       type: object
@@ -415,50 +914,221 @@ components:
         title: { type: string }
         category: { type: string }
         categoryColor: { type: string }
-        amount: { type: number }
-        currency: { type: string }
-        paidBy:
-          $ref: '#/components/schemas/ApiUser'
-        splitType: { type: string }
+        amount: { type: number, description: In the group's base currency }
+        currency: { type: string, description: The group's base currency }
+        originalAmount: { type: number, description: As entered }
+        originalCurrency: { type: string, description: As entered }
+        exchangeRate: { type: number, description: Snapshot rate from originalCurrency to currency }
+        paidByUserId: { type: string, format: uuid }
+        paidBy: { $ref: '#/components/schemas/UserSummary' }
+        splitType: { type: string, enum: [equal, exact, percentage] }
+        splits:
+          type: array
+          items:
+            type: object
+            properties:
+              userId: { type: string, format: uuid }
+              amount: { type: number, description: Share in the base currency }
+              percentage: { type: number, nullable: true }
         date: { type: string, format: date-time }
+        receiptUrl: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
 
     Settlement:
       type: object
       properties:
         id: { type: string, format: uuid }
         groupId: { type: string, format: uuid }
-        from: { $ref: '#/components/schemas/ApiUser' }
-        to: { $ref: '#/components/schemas/ApiUser' }
+        fromUserId: { type: string, format: uuid }
+        toUserId: { type: string, format: uuid }
+        from: { $ref: '#/components/schemas/UserSummary' }
+        to: { $ref: '#/components/schemas/UserSummary' }
         amount: { type: number }
         currency: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [pending, paid, cancelled] }
         paid: { type: boolean }
         paidAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Analytics:
+      type: object
+      properties:
+        currency: { type: string }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        totalSpend: { type: number, description: Total spend of the groups in scope }
+        yourShare: { type: number, description: Your portion of totalSpend }
+        averageMonthlySpend: { type: number }
+        largestCategory:
+          type: object
+          nullable: true
+          description: Null when there is no spend in range
+          properties:
+            name: { type: string }
+            amount: { type: number }
+            color: { type: string }
+        monthlySpend:
+          type: array
+          description: Every month in range, oldest first, including empty months
+          items:
+            type: object
+            properties:
+              month: { type: string, example: "2026-09" }
+              amount: { type: number }
+        categories:
+          type: array
+          description: Largest first
+          items: { $ref: '#/components/schemas/CategoryAmount' }
+        audit:
+          type: array
+          description: The 20 most recent actions in the groups in scope
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              action: { type: string, example: "expense.created" }
+              label: { type: string, example: "Added expense" }
+              type: { type: string, enum: [add, settle, invite, join, leave, group] }
+              actor: { $ref: '#/components/schemas/UserSummary' }
+              groupId: { type: string, format: uuid, nullable: true }
+              groupName: { type: string, nullable: true }
+              target: { type: string, nullable: true, example: "Villa · USD 480.00" }
+              createdAt: { type: string, format: date-time }
+
+    CategoryAmount:
+      type: object
+      properties:
+        name: { type: string }
+        amount: { type: number }
+        color: { type: string }
 
     Notification:
       type: object
       properties:
         id: { type: string, format: uuid }
-        type: { type: string }
+        type: { type: string, enum: [expense, settlement, invite, reminder] }
         title: { type: string }
         desc: { type: string }
-        time: { type: string }
+        time: { type: string, format: date-time }
         read: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        metadata:
+          type: object
+          additionalProperties: true
+          example: { groupId: "…", expenseId: "…" }
+
+    Settings:
+      type: object
+      properties:
+        profile:
+          type: object
+          properties:
+            name: { type: string }
+            email: { type: string, format: email }
+            username: { type: string }
+            avatarUrl: { type: string, nullable: true }
+            emailVerified: { type: boolean }
+            hasPassword: { type: boolean, description: False for accounts that only sign in with Google or GitHub }
+        notifications:
+          type: object
+          properties:
+            expense: { type: boolean }
+            settlement: { type: boolean }
+            reminder: { type: boolean }
+            digest: { type: boolean }
+        currency: { type: string }
+        theme: { type: string, enum: [system, light, dark] }
+        language: { type: string }
+        dateFormat: { type: string, enum: ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"] }
+
+    ScannedReceipt:
+      type: object
+      required: [amount, category, items]
+      properties:
+        title: { type: string, example: "Jimbaran Seafood Cafe" }
+        amount: { type: number, example: 83.05 }
+        currency: { type: string, example: "USD" }
+        date: { type: string, format: date, example: "2026-10-08" }
+        category: { type: string, example: "Food & Drink" }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              amount: { type: number }
 
     ApiErrorResponse:
       type: object
-      required: [message]
+      required: [message, code]
       properties:
         message: { type: string }
-        code: { type: string }
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - MALFORMED_REQUEST
+            - UNAUTHORIZED
+            - INVALID_CREDENTIALS
+            - FORBIDDEN
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - EMAIL_ALREADY_REGISTERED
+            - USERNAME_TAKEN
+            - INVALID_TOKEN
+            - EMAIL_ALREADY_VERIFIED
+            - RECEIPT_UNREADABLE
+            - RECEIPT_SCAN_UNAVAILABLE
+            - OUTSTANDING_BALANCE
+            - INVITATION_NOT_PENDING
+            - SETTLEMENT_NOT_PAYABLE
+            - UNSUPPORTED_CURRENCY
+            - FX_UNAVAILABLE
+            - IDEMPOTENCY_KEY_REUSED
+            - REQUEST_IN_PROGRESS
+            - RATE_LIMITED
+            - INTERNAL_ERROR
         fieldErrors:
           type: object
           additionalProperties: { type: string }
 
   responses:
-    UnauthorizedError:
-      description: Missing or invalid splitsync_session cookie
+    Unauthorized:
+      description: Missing/invalid session, or wrong credentials on login
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/ApiErrorResponse'
+          schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+    NotFound:
+      description: Does not exist or is not visible to you (non-members get 404, not 403)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+    Conflict:
+      description: Conflicts with the current state (duplicate email, outstanding balance, invitation not pending…)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+    ValidationError:
+      description: Well-formed JSON that failed validation; see `fieldErrors`
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+    InvalidToken:
+      description: The emailed link is unknown, already used or expired (`INVALID_TOKEN`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Seconds to wait
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiErrorResponse' }

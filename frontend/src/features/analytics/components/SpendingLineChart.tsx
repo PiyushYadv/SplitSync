@@ -1,106 +1,92 @@
 "use client";
 
 import { useState } from "react";
+import { formatMonth } from "@/src/lib/format/date";
+import { formatMoney } from "@/src/lib/format/money";
 
-const DATA = [
-  { month: "Feb", bali: 0, apartment: 420, ski: 0 },
-  { month: "Mar", bali: 0, apartment: 380, ski: 1240 },
-  { month: "Apr", bali: 0, apartment: 410, ski: 220 },
-  { month: "May", bali: 0, apartment: 455, ski: 0 },
-  { month: "Jun", bali: 0, apartment: 390, ski: 0 },
-  { month: "Jul", bali: 1245, apartment: 445, ski: 0 },
-];
-const LINES = [
-  { key: "bali", color: "#10b981" },
-  { key: "apartment", color: "#6366f1" },
-  { key: "ski", color: "#f59e0b" },
-] as const;
+const WIDTH = 560;
+const HEIGHT = 200;
+const LEFT = 52;
+const RIGHT = 10;
+const TOP = 12;
+const BOTTOM = 24;
 
-export default function SpendingLineChart() {
+function compact(value: number, currency: string) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+export default function SpendingLineChart({
+  data,
+  currency,
+}: {
+  data: Array<{ month: string; amount: number }>;
+  currency: string;
+}) {
   const [hover, setHover] = useState<number | null>(null);
-  const width = 560,
-    height = 200,
-    left = 44,
-    right = 10,
-    top = 8,
-    bottom = 24;
-  const chartWidth = width - left - right,
-    chartHeight = height - top - bottom,
-    max = 1245;
-  const x = (index: number) => left + (index / (DATA.length - 1)) * chartWidth;
-  const y = (value: number) => top + chartHeight - (value / max) * chartHeight;
+  const chartWidth = WIDTH - LEFT - RIGHT;
+  const chartHeight = HEIGHT - TOP - BOTTOM;
+  const max = Math.max(...data.map((item) => item.amount), 1);
+  const step = data.length > 1 ? chartWidth / (data.length - 1) : chartWidth;
+  const x = (index: number) => LEFT + (data.length > 1 ? index * step : chartWidth / 2);
+  const y = (value: number) => TOP + chartHeight - (value / max) * chartHeight;
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
+  const hovered = hover !== null ? data[hover] : null;
+
   return (
-    <div className="relative" style={{ paddingBottom: "calc(200/560*100%)" }}>
+    <div className="relative" style={{ paddingBottom: `calc(${HEIGHT}/${WIDTH}*100%)` }}>
       <svg
-        viewBox={`0 0 ${width} ${height}`}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="absolute inset-0 w-full h-full"
         onMouseLeave={() => setHover(null)}
       >
-        {[0, 311, 623, 934, 1245].map((tick) => (
+        {ticks.map((tick) => (
           <g key={tick}>
-            <line
-              x1={left}
-              x2={width - right}
-              y1={y(tick)}
-              y2={y(tick)}
-              stroke="#f1f5f9"
-            />
-            <text
-              x={left - 4}
-              y={y(tick) + 4}
-              textAnchor="end"
-              fontSize={10}
-              fill="#94a3b8"
-            >
-              ${tick >= 1000 ? `${(tick / 1000).toFixed(1)}k` : tick}
+            <line x1={LEFT} x2={WIDTH - RIGHT} y1={y(tick)} y2={y(tick)} stroke="#f1f5f9" />
+            <text x={LEFT - 4} y={y(tick) + 4} textAnchor="end" fontSize={10} fill="#94a3b8">
+              {compact(tick, currency)}
             </text>
           </g>
         ))}
-        {LINES.map(({ key, color }) => (
-          <polyline
-            key={key}
-            fill="none"
-            stroke={color}
-            strokeWidth={2}
-            points={DATA.map(
-              (item, index) => `${x(index)},${y(item[key])}`,
-            ).join(" ")}
-          />
+        <polyline
+          fill="none"
+          stroke="#6366f1"
+          strokeWidth={2}
+          points={data.map((item, index) => `${x(index)},${y(item.amount)}`).join(" ")}
+        />
+        {data.map((item, index) => (
+          <circle key={item.month} cx={x(index)} cy={y(item.amount)} r={hover === index ? 4 : 2.5} fill="#6366f1" />
         ))}
-        {DATA.map((_, index) => (
+        {data.map((item, index) => (
           <rect
-            key={index}
-            x={x(index) - chartWidth / (DATA.length - 1) / 2}
-            y={top}
-            width={chartWidth / (DATA.length - 1)}
+            key={`hit-${item.month}`}
+            x={x(index) - step / 2}
+            y={TOP}
+            width={step}
             height={chartHeight}
             fill="transparent"
             onMouseEnter={() => setHover(index)}
           />
         ))}
-        {DATA.map((item, index) => (
-          <text
-            key={item.month}
-            x={x(index)}
-            y={height - 5}
-            textAnchor="middle"
-            fontSize={10}
-            fill="#94a3b8"
-          >
-            {item.month}
+        {data.map((item, index) => (
+          <text key={`label-${item.month}`} x={x(index)} y={HEIGHT - 5} textAnchor="middle" fontSize={10} fill="#94a3b8">
+            {formatMonth(item.month)}
           </text>
         ))}
         {hover !== null && (
-          <line
-            x1={x(hover)}
-            x2={x(hover)}
-            y1={top}
-            y2={top + chartHeight}
-            stroke="#cbd5e1"
-            strokeDasharray="3 2"
-          />
+          <line x1={x(hover)} x2={x(hover)} y1={TOP} y2={TOP + chartHeight} stroke="#cbd5e1" strokeDasharray="3 2" />
         )}
       </svg>
+      {hovered && (
+        <div className="absolute top-0 right-0 bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs shadow-sm">
+          <span className="text-slate-400">{formatMonth(hovered.month, true)}: </span>
+          <span className="font-semibold text-slate-800">{formatMoney(hovered.amount, currency)}</span>
+        </div>
+      )}
     </div>
   );
 }

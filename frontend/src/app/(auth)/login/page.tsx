@@ -1,22 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import AuthLayout from "@/src/features/auth/components/AuthLayout";
-import SocialButton from "@/src/features/auth/components/SocialButton";
+import SocialSignIn, { OAUTH_ERRORS } from "@/src/features/auth/components/SocialSignIn";
 import FormInput from "@/src/features/auth/components/FormInput";
 import PasswordInput from "@/src/features/auth/components/PasswordInput";
-import { apiRequest } from "@/src/lib/api/client";
-import { API_ENDPOINTS } from "@/src/lib/api/endpoints";
-import type { LoginResponse } from "@/src/lib/api/contracts";
+import { errorMessage as messageOf } from "@/src/lib/api/client";
+import { useLogin } from "@/src/lib/data/mutations";
 
 type FormData = {
   email: string;
   password: string;
 };
+
+/** Where to go after signing in: the page that sent you here, if it's one of ours. */
+function nextPath() {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+}
 
 export default function Login() {
   const router = useRouter();
@@ -29,18 +34,22 @@ export default function Login() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>();
 
+  const login = useLogin();
+
+  // A failed Google/GitHub sign-in comes back as /login?error=<code>.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the URL once after mount
+    if (code) setErrorMessage(OAUTH_ERRORS[code] ?? OAUTH_ERRORS.oauth_failed);
+  }, []);
+
   async function onSubmit(data: FormData) {
     setErrorMessage(null);
     try {
-      await apiRequest<LoginResponse>(API_ENDPOINTS.auth.login, {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-      router.push("/dashboard");
+      await login.mutateAsync(data);
+      router.replace(nextPath());
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Unable to sign in",
-      );
+      setErrorMessage(messageOf(error, "Unable to sign in"));
     }
   }
 
@@ -50,17 +59,7 @@ export default function Login() {
       description="Sign in to your SplitSync account"
     >
       <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
-        <div className="mb-5 flex flex-col gap-3">
-          <SocialButton provider="Google" />
-          <SocialButton provider="Github" />
-          <SocialButton provider="Apple" />
-        </div>
-
-        <div className="flex items-center gap-3 my-4">
-          <div className="flex-1 h-px bg-slate-200" />
-          <span className="text-xs text-slate-400">or</span>
-          <div className="flex-1 h-px bg-slate-200" />
-        </div>
+        <SocialSignIn />
 
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
           {errorMessage && (

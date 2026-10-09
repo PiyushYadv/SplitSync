@@ -8,7 +8,7 @@ import Link from "next/link";
 
 import AuthLayout from "@/src/features/auth/components/AuthLayout";
 import FormInput from "@/src/features/auth/components/FormInput";
-import { apiRequest } from "@/src/lib/api/client";
+import { apiSend } from "@/src/lib/api/client";
 import { API_ENDPOINTS } from "@/src/lib/api/endpoints";
 
 type ForgotPasswordForm = {
@@ -30,10 +30,7 @@ export default function ForgotPassword() {
   async function onSubmit(data: ForgotPasswordForm) {
     setErrorMessage(null);
     try {
-      await apiRequest(API_ENDPOINTS.auth.forgotPassword, {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      await apiSend("POST", API_ENDPOINTS.auth.forgotPassword, data);
       setDone(true);
     } catch (error) {
       setErrorMessage(
@@ -47,7 +44,7 @@ export default function ForgotPassword() {
       title={done ? "Check your inbox" : "Forgot your password?"}
       description={
         done
-          ? `We sent a password reset link to ${getValues("email")}`
+          ? `If an account exists for ${getValues("email")}, we've sent it a reset link`
           : "Enter your email and we'll send you a reset link"
       }
     >

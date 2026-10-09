@@ -31,6 +31,15 @@ services:
       timeout: 5s
       retries: 5
 
+  # Catches every email the backend sends in development. Inbox: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+    container_name: splitsync-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   postgres_data:
     name: splitsync_postgres_data

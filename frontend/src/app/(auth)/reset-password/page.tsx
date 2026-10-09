@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check } from "lucide-react";
@@ -8,7 +8,7 @@ import Link from "next/link";
 
 import AuthLayout from "@/src/features/auth/components/AuthLayout";
 import PasswordInput from "@/src/features/auth/components/PasswordInput";
-import { apiRequest } from "@/src/lib/api/client";
+import { apiSend } from "@/src/lib/api/client";
 import { API_ENDPOINTS } from "@/src/lib/api/endpoints";
 
 type ResetPasswordForm = {
@@ -16,7 +16,7 @@ type ResetPasswordForm = {
   confirmPassword: string;
 };
 
-export default function ResetPassword() {
+function ResetPasswordContent() {
   const router = useRouter();
 
   const searchParams = useSearchParams();
@@ -45,9 +45,9 @@ export default function ResetPassword() {
     }
     setErrorMessage(null);
     try {
-      await apiRequest(API_ENDPOINTS.auth.resetPassword, {
-        method: "POST",
-        body: JSON.stringify({ token, password: data.password }),
+      await apiSend("POST", API_ENDPOINTS.auth.resetPassword, {
+        token,
+        password: data.password,
       });
       setDone(true);
     } catch (error) {
@@ -144,5 +144,14 @@ export default function ResetPassword() {
         </div>
       )}
     </AuthLayout>
+  );
+}
+
+// useSearchParams() needs a Suspense boundary so the rest of the page can be prerendered.
+export default function ResetPassword() {
+  return (
+    <Suspense>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
