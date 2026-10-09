@@ -1,5 +1,7 @@
 # SplitSync 💸⚡
 
+[![CI](https://github.com/PiyushYadv/SplitSync/actions/workflows/ci.yml/badge.svg)](https://github.com/PiyushYadv/SplitSync/actions/workflows/ci.yml)
+
 SplitSync is a high-density, collaborative expense-splitting platform engineered for modern groups and teams. It pairs a fluid Next.js 16 / React 19 frontend with a robust Java Spring Boot 3 backend backed by PostgreSQL and Redis.
 
 ---
