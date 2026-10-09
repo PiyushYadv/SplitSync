@@ -3,24 +3,26 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-// import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Check } from "lucide-react";
 import SocialButton from "@/src/features/auth/components/SocialButton";
 import FormInput from "@/src/features/auth/components/FormInput";
 import PasswordInput from "@/src/features/auth/components/PasswordInput";
 import AuthLayout from "@/src/features/auth/components/AuthLayout";
-import { apiRequest } from "@/src/lib/api/client";
-import { API_ENDPOINTS } from "@/src/lib/api/endpoints";
-import type { SignupResponse } from "@/src/lib/api/contracts";
+import { errorMessage as messageOf } from "@/src/lib/api/client";
+import { useLogin, useSignup } from "@/src/lib/data/mutations";
 
 type SignupForm = {
+  name: string;
   email: string;
   password: string;
   confirmPassword: string;
 };
 
 export default function Signup() {
-  // const router = useRouter();
+  const router = useRouter();
+  const signup = useSignup();
+  const login = useLogin();
   const [done, setDone] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -40,17 +42,20 @@ export default function Signup() {
   async function onSubmit(data: SignupForm) {
     setErrorMessage(null);
     try {
-      await apiRequest<SignupResponse>(API_ENDPOINTS.auth.signup, {
-        method: "POST",
-        body: JSON.stringify({ email: data.email, password: data.password }),
+      const credentials = { email: data.email, password: data.password };
+      const { verificationRequired } = await signup.mutateAsync({
+        name: data.name.trim(),
+        ...credentials,
       });
-      setDone(true);
+      if (verificationRequired) {
+        setDone(true);
+        return;
+      }
+      // No email verification step yet: sign the new user straight in.
+      await login.mutateAsync(credentials);
+      router.replace("/dashboard");
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to create your account",
-      );
+      setErrorMessage(messageOf(error, "Unable to create your account"));
     }
   }
 
@@ -68,14 +73,6 @@ export default function Signup() {
           <div className="w-14 h-14 bg-emerald-50 border border-emerald-200 rounded-full flex items-center justify-center mx-auto mb-5">
             <Check size={24} className="text-emerald-500" strokeWidth={2.5} />
           </div>
-
-          {/* <button
-            type="button"
-            onClick={() => router.push("/dashboard")}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-sm transition-colors"
-          >
-            Go to dashboard
-          </button> */}
 
           <p className="w-full bg-indigo-50 text-indigo-600 font-bold py-3 rounded-xl text-sm text-center">
             Check your inbox
@@ -113,6 +110,18 @@ export default function Signup() {
               </p>
             )}
             <FormInput
+              label="Full name"
+              type="text"
+              placeholder="Alex Johnson"
+              registration={register("name", {
+                required: "Name is required",
+                validate: (value) => value.trim().length > 0 || "Name is required",
+                maxLength: { value: 255, message: "Name is too long" },
+              })}
+              error={errors.name?.message}
+            />
+
+            <FormInput
               label="Email address"
               type="email"
               placeholder="you@company.com"
@@ -136,6 +145,10 @@ export default function Signup() {
                 minLength: {
                   value: 8,
                   message: "Password must be at least 8 characters",
+                },
+                maxLength: {
+                  value: 72,
+                  message: "Password must be at most 72 characters",
                 },
               })}
               error={errors.password?.message}

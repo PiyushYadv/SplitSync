@@ -1,3 +1,5 @@
+const id = (value: string) => encodeURIComponent(value);
+
 export const API_ENDPOINTS = {
   auth: {
     verifyEmail: (token: string) =>
@@ -10,14 +12,28 @@ export const API_ENDPOINTS = {
     logout: "/auth/logout",
     currentUser: "/auth/me",
   },
+  userSearch: "/users/search",
+  friends: "/friends",
+  dashboard: "/dashboard",
+  analytics: "/analytics/summary",
   groups: "/groups",
+  group: (groupId: string) => `/groups/${id(groupId)}`,
+  groupInvitations: (groupId: string) => `/groups/${id(groupId)}/invitations`,
+  groupLeave: (groupId: string) => `/groups/${id(groupId)}/leave`,
+  invitations: "/invitations",
+  invitationAccept: (invitationId: string) =>
+    `/invitations/${id(invitationId)}/accept`,
+  invitationDecline: (invitationId: string) =>
+    `/invitations/${id(invitationId)}/decline`,
   expenses: "/expenses",
   settlements: "/settlements",
-  settlementPay: (id: string) => `/settlements/${encodeURIComponent(id)}/pay`,
+  settlementPay: (settlementId: string) =>
+    `/settlements/${id(settlementId)}/pay`,
   notifications: "/notifications",
-  notificationRead: (id: string) =>
-    `/notifications/${encodeURIComponent(id)}/read`,
-  notificationDismiss: (id: string) =>
-    `/notifications/${encodeURIComponent(id)}`,
+  notificationsReadAll: "/notifications/read-all",
+  notificationRead: (notificationId: string) =>
+    `/notifications/${id(notificationId)}/read`,
+  notificationDismiss: (notificationId: string) =>
+    `/notifications/${id(notificationId)}`,
   settings: "/me/settings",
 } as const;

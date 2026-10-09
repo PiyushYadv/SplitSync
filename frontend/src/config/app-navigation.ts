@@ -16,9 +16,3 @@ export const APP_NAVIGATION: Array<{
   { href: "/groups", icon: Users, label: "Groups" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
-
-export const DEFAULT_GROUP_NAVIGATION = [
-  { id: "bali", label: "Trip to Bali", color: "bg-emerald-400" },
-  { id: "apartment", label: "Apartment Bills", color: "bg-indigo-400" },
-  { id: "ski", label: "Ski Trip", color: "bg-amber-400" },
-];

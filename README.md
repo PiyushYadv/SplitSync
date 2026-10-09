@@ -48,19 +48,31 @@ SplitSync/
 
 - Node.js >= 20.x
 - Java JDK >= 21
-- PostgreSQL >= 15
-- Redis >= 7
+- Docker (for PostgreSQL 16 and Redis 7)
 
-### Frontend Setup
+### 1. Databases
+
+```bash
+docker compose up -d
+```
+
+### 2. Backend
+
+```bash
+cd backend
+./mvnw spring-boot:run   # http://localhost:8080/api (Flyway migrates on startup)
+./mvnw test              # unit + Testcontainers integration tests (needs Docker)
+```
+
+Database, Redis, CORS, exchange-rate and rate-limit settings live in `backend/src/main/resources/application.yml` and can be overridden with environment variables. The REST contract is documented in `openapi.yaml`.
+
+### 3. Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev
+cp .env.example .env.local
+npm run dev              # http://localhost:3000
 ```
 
-Frontend runs on `http://localhost:3000`.
-
-### Backend Configuration
-
-The backend runs on port `8080` under the `/api` prefix (`http://localhost:8080/api`). Configure `application.yml` or environment variables for PostgreSQL and Redis connectivity.
+The app pages require the backend: sign up at `/signup` to get started.

@@ -1,12 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Expense } from "@/src/data/groupData";
+import CurrencyBadge from "@/src/features/dashboard/components/CurrencyBadge";
+import { formatDate } from "@/src/lib/format/date";
+import { formatMoney } from "@/src/lib/format/money";
+import type { Expense } from "@/src/types/domain";
 
 export default function GroupExpenseTable({
   expenses,
+  currentUserId,
 }: {
   expenses: Expense[];
+  currentUserId?: string;
 }) {
   const [query, setQuery] = useState("");
   const [sortDescending, setSortDescending] = useState(true);
@@ -43,27 +48,51 @@ export default function GroupExpenseTable({
         </div>
       </div>
       <div className="divide-y divide-slate-100 dark:divide-slate-800">
-        {visible.map((expense) => (
-          <div key={expense.id} className="flex items-center gap-4 px-4 py-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800 truncate">
-                {expense.title}
-              </p>
-              <p className="text-xs text-slate-400">
-                {expense.category} · {expense.date}
-              </p>
+        {visible.map((expense) => {
+          const myShare = expense.splits.find((split) => split.userId === currentUserId);
+          return (
+            <div key={expense.id} className="flex items-center gap-4 px-4 py-3">
+              <div
+                className="w-2 h-8 rounded-full shrink-0"
+                style={{ backgroundColor: expense.categoryColor }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800 truncate">
+                  {expense.title}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {expense.category} · {formatDate(expense.date)} · {expense.splitType} split
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-500">
+                  {expense.paidByUserId === currentUserId ? "You" : expense.paidBy.name} paid
+                </p>
+                {myShare && (
+                  <p className="text-[11px] text-slate-400">
+                    your share {formatMoney(myShare.amount, expense.currency)}
+                  </p>
+                )}
+              </div>
+              <div className="text-right w-28">
+                <p className="text-sm font-semibold text-slate-800">
+                  {formatMoney(expense.amount, expense.currency)}
+                </p>
+                {expense.originalCurrency !== expense.currency && (
+                  <div className="flex items-center justify-end gap-1">
+                    <CurrencyBadge currency={expense.originalCurrency} />
+                    <span className="text-[10px] text-slate-400">
+                      {formatMoney(expense.originalAmount, expense.originalCurrency)}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-            <span className="text-xs text-slate-500">
-              {expense.paidBy.name}
-            </span>
-            <span className="text-sm font-semibold text-slate-800">
-              ${expense.amount.toFixed(2)}
-            </span>
-          </div>
-        ))}
+          );
+        })}
         {visible.length === 0 && (
           <p className="px-4 py-8 text-center text-sm text-slate-400">
-            No expenses found.
+            {expenses.length === 0 ? "No expenses yet." : "No expenses match your search."}
           </p>
         )}
       </div>

@@ -1,13 +1,17 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
 
 export default function LeaveGroupModal({
   name,
+  pending = false,
+  error,
   onConfirm,
   onClose,
 }: {
   name: string;
+  pending?: boolean;
+  error?: string | null;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -26,10 +30,15 @@ export default function LeaveGroupModal({
         <h2 className="text-base font-bold text-slate-900 mb-1">
           Leave {name}?
         </h2>
-        <p className="text-sm text-slate-500 mb-6">
-          You will no longer see this group or its expenses. Make sure balances
-          are settled first.
+        <p className="text-sm text-slate-500 mb-4">
+          You will no longer see this group or its expenses. You can only leave
+          once your balance in the group is settled.
         </p>
+        {error && (
+          <p className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-600">
+            {error}
+          </p>
+        )}
         <div className="flex gap-3">
           <button
             onClick={onClose}
@@ -39,8 +48,10 @@ export default function LeaveGroupModal({
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 bg-rose-500 text-white rounded-lg py-2.5 text-sm font-semibold"
+            disabled={pending}
+            className="flex-1 flex items-center justify-center gap-2 bg-rose-500 disabled:opacity-60 text-white rounded-lg py-2.5 text-sm font-semibold"
           >
+            {pending && <Loader2 size={14} className="animate-spin" />}
             Leave Group
           </button>
         </div>

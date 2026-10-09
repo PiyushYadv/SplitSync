@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import AuthLayout from "@/src/features/auth/components/AuthLayout";
-import { apiRequest } from "@/src/lib/api/client";
+import { apiGet } from "@/src/lib/api/client";
 import { API_ENDPOINTS } from "@/src/lib/api/endpoints";
 
-export default function VerifyEmail() {
+function VerifyEmailContent() {
   const params = useSearchParams();
   const router = useRouter();
 
@@ -22,7 +22,7 @@ export default function VerifyEmail() {
 
     async function verify() {
       try {
-        await apiRequest(API_ENDPOINTS.auth.verifyEmail(verificationToken));
+        await apiGet(API_ENDPOINTS.auth.verifyEmail(verificationToken));
         setMessage("Email verified successfully!");
         setTimeout(() => {
           router.push("/login");
@@ -42,5 +42,14 @@ export default function VerifyEmail() {
       title={message}
       description="You can close this page once verification is complete."
     />
+  );
+}
+
+// useSearchParams() needs a Suspense boundary so the rest of the page can be prerendered.
+export default function VerifyEmail() {
+  return (
+    <Suspense>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }

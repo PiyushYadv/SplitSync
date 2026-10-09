@@ -1,7 +1,8 @@
-import { getDashboardData } from "@/src/lib/data/queries";
+import { serverApi } from "@/src/lib/api/server";
 import DashboardClient from "@/src/features/dashboard/components/DashboardClient";
+import type { DashboardData } from "@/src/types/domain";
 
 export default async function DashboardPage() {
-  const data = await getDashboardData();
-  return <DashboardClient {...data} />;
+  const dashboard = await serverApi<DashboardData>("/dashboard", "/dashboard");
+  return <DashboardClient initialData={dashboard} />;
 }
