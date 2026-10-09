@@ -5,7 +5,19 @@ info:
     Collaborative expense splitting and debt optimization API.
 
     **Authentication.** `POST /auth/login` sets an HttpOnly `splitsync_session` cookie backed by Redis.
-    Every endpoint except signup, login and logout requires it; missing or expired sessions get a JSON 401.
+    Endpoints marked `security: []` are public; every other one requires the cookie, and missing or
+    expired sessions get a JSON 401.
+
+    **Google and GitHub sign-in** is a browser redirect flow handled by Spring Security, offered only for
+    providers configured on the server (see `GET /config`). The browser opens
+    `/auth/oauth/{google|github}`; the provider calls back to `/auth/oauth/callback/{provider}` (register
+    this URL with the provider), which sets the session cookie and redirects to the frontend's
+    `/dashboard`, or to `/login?error=<code>` on failure (`email_not_verified`, `access_denied`,
+    `oauth_failed`, …). Accounts are matched by verified email.
+
+    **Emailed links** (verification, password reset, email change) point at frontend pages that POST the
+    `token` to the endpoints below. Tokens are single-use; an unknown, used or expired one returns 400
+    `INVALID_TOKEN`.
 
     **Money.** Amounts are JSON numbers with two decimal places, computed with decimal arithmetic on the
     server. Each group has a `baseCurrency`; expenses entered in another currency are converted once using
@@ -18,8 +30,9 @@ info:
     header. Retrying with the same key returns the original result; reusing a key with a different body
     returns 422 `IDEMPOTENCY_KEY_REUSED`.
 
-    **Rate limits.** Login and signup are limited per client IP and user search per user; exceeding a
-    limit returns 429 `RATE_LIMITED` with a `Retry-After` header.
+    **Rate limits.** Login, signup and forgot-password are limited per client IP; user search, receipt
+    scanning, resending verification and email changes per user. Exceeding a limit returns 429
+    `RATE_LIMITED` with a `Retry-After` header.
   version: 1.0.0
 servers:
   - url: http://localhost:8080/api
@@ -39,6 +52,8 @@ tags:
   - name: Analytics
   - name: Notifications
   - name: Settings
+  - name: Receipts
+  - name: Meta
 
 paths:
   /auth/signup:
@@ -59,7 +74,9 @@ paths:
                 password: { type: string, format: password, minLength: 8, maxLength: 72 }
       responses:
         '200':
-          description: Registered. Email verification is not enabled yet, so `verificationRequired` is false.
+          description: |
+            Registered, and a verification email is sent. The account can sign in right away
+            (`verificationRequired` is always false); `emailVerified` on the user tracks the address.
           content:
             application/json:
               schema:
@@ -123,6 +140,101 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ApiUser' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/forgot-password:
+    post:
+      summary: Email a password reset link
+      description: Always 204, whether or not an account uses the email, so it can't reveal who has one.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '204': { description: Sent if the account exists }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/reset-password:
+    post:
+      summary: Set a new password from a reset link
+      description: Link valid for 30 minutes. Signs the account out of every session and marks the email verified.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, format: password, minLength: 8, maxLength: 72 }
+      responses:
+        '204': { description: Password changed }
+        '400': { $ref: '#/components/responses/InvalidToken' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /auth/verify-email:
+    post:
+      summary: Verify your email from the emailed link
+      description: Link valid for 24 hours, and only for the address it was sent to.
+      tags: [Authentication]
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/Token' }
+      responses:
+        '204': { description: Verified }
+        '400': { $ref: '#/components/responses/InvalidToken' }
+
+  /auth/verify-email/resend:
+    post:
+      summary: Send a new verification email
+      description: Earlier verification links stop working.
+      tags: [Authentication]
+      responses:
+        '204': { description: Sent }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/confirm-email-change:
+    post:
+      summary: Apply an email change from the link sent to the new address
+      description: |
+        Public, since the link may be opened in a browser that isn't signed in. Existing sessions stay
+        signed in, and the old address is notified.
+      tags: [Authentication]
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/Token' }
+      responses:
+        '204': { description: Email changed }
+        '400': { $ref: '#/components/responses/InvalidToken' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /config:
+    get:
+      summary: Optional features configured on this server
+      description: Lets the frontend show only working buttons.
+      tags: [Meta]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  oauthProviders:
+                    type: array
+                    items: { type: string, enum: [google, github] }
+                  receiptScanning: { type: boolean }
 
   /users/search:
     get:
@@ -569,8 +681,8 @@ paths:
         - `notifications`: any of `expense`, `settlement`, `reminder`, `digest` (booleans)
         - `currency`: `currency` (also the default for new groups)
         - `appearance`: `theme` (`system`|`light`|`dark`), `language`, `dateFormat` (`MM/DD/YYYY`|`DD/MM/YYYY`|`YYYY-MM-DD`)
-        - `security`: `currentPassword`, `newPassword`; signs out all your other sessions
-        - `billing`: not available yet (422)
+        - `security`: `currentPassword`, `newPassword`; signs out all your other sessions. Accounts
+          without a password (`profile.hasPassword: false`) send only `newPassword`.
       tags: [Settings]
       requestBody:
         required: true
@@ -580,7 +692,7 @@ paths:
               type: object
               required: [section, values]
               properties:
-                section: { type: string, enum: [profile, notifications, currency, appearance, security, billing] }
+                section: { type: string, enum: [profile, notifications, currency, appearance, security] }
                 values: { type: object, additionalProperties: true, example: { theme: dark } }
       responses:
         '200':
@@ -591,12 +703,85 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /me/email:
+    post:
+      summary: Start an email change
+      description: |
+        Emails a confirmation link (valid 24 hours) to the new address; nothing changes until it is opened
+        (`POST /auth/confirm-email-change`). `currentPassword` is required unless the account has no password.
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                currentPassword: { type: string, format: password }
+      responses:
+        '202': { description: Confirmation link sent }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /receipts/scan:
+    post:
+      summary: Read a receipt photo to prefill an expense
+      description: |
+        Requires receipt scanning to be configured (`GET /config`). The image is sent to the OCR provider
+        and not stored. Fields that couldn't be read are omitted; `category` is one of the expense categories.
+      tags: [Receipts]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, WebP, HEIC or PDF, up to 10 MB
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScannedReceipt' }
+        '400': { description: No file attached }
+        '413': { description: File over 10 MB }
+        '422':
+          description: Unsupported file type (`VALIDATION_ERROR`), or no receipt total found (`RECEIPT_UNREADABLE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: Scanning not configured or provider unavailable (`RECEIPT_SCAN_UNAVAILABLE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+
 components:
   securitySchemes:
     sessionCookie:
       type: apiKey
       in: cookie
       name: splitsync_session
+
+  requestBodies:
+    Token:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [token]
+            properties:
+              token: { type: string, description: The token from the emailed link }
 
   parameters:
     Id:
@@ -614,13 +799,14 @@ components:
   schemas:
     ApiUser:
       type: object
-      required: [id, name, email]
+      required: [id, name, email, emailVerified]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         email: { type: string, format: email }
         username: { type: string, example: "@piyush" }
         avatarUrl: { type: string, nullable: true }
+        emailVerified: { type: boolean }
 
     UserSummary:
       type: object
@@ -841,6 +1027,8 @@ components:
             email: { type: string, format: email }
             username: { type: string }
             avatarUrl: { type: string, nullable: true }
+            emailVerified: { type: boolean }
+            hasPassword: { type: boolean, description: False for accounts that only sign in with Google or GitHub }
         notifications:
           type: object
           properties:
@@ -852,6 +1040,23 @@ components:
         theme: { type: string, enum: [system, light, dark] }
         language: { type: string }
         dateFormat: { type: string, enum: ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"] }
+
+    ScannedReceipt:
+      type: object
+      required: [amount, category, items]
+      properties:
+        title: { type: string, example: "Jimbaran Seafood Cafe" }
+        amount: { type: number, example: 83.05 }
+        currency: { type: string, example: "USD" }
+        date: { type: string, format: date, example: "2026-10-08" }
+        category: { type: string, example: "Food & Drink" }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              amount: { type: number }
 
     ApiErrorResponse:
       type: object
@@ -870,6 +1075,10 @@ components:
             - METHOD_NOT_ALLOWED
             - EMAIL_ALREADY_REGISTERED
             - USERNAME_TAKEN
+            - INVALID_TOKEN
+            - EMAIL_ALREADY_VERIFIED
+            - RECEIPT_UNREADABLE
+            - RECEIPT_SCAN_UNAVAILABLE
             - OUTSTANDING_BALANCE
             - INVITATION_NOT_PENDING
             - SETTLEMENT_NOT_PAYABLE
@@ -906,6 +1115,11 @@ components:
           schema: { $ref: '#/components/schemas/ApiErrorResponse' }
     ValidationError:
       description: Well-formed JSON that failed validation; see `fieldErrors`
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiErrorResponse' }
+    InvalidToken:
+      description: The emailed link is unknown, already used or expired (`INVALID_TOKEN`)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ApiErrorResponse' }

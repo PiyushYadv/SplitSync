@@ -11,7 +11,7 @@ SplitSync is a high-density, collaborative expense-splitting platform engineered
 - **Primary Database**: PostgreSQL (relational ledger, expenses, splits, groups, members, audit trail).
 - **In-Memory Store & Cache**: Redis (distributed session store for `splitsync_session`, exchange rate caching, idempotency locks, rate limiting).
 - **Debt Optimization Engine**: Greedy bipartite graph minimization algorithm running in Java to collapse $O(N^2)$ IOUs into minimal $O(N)$ settlement transactions.
-- **AI Receipt OCR**: Multimodal LLM pipeline extracting merchant name, dates, totals, and line items directly into interactive split tables.
+- **AI Receipt OCR**: Receipt photos are read by Google Gemini under a strict JSON schema; the merchant, total, currency, date, category and line items prefill the expense form for review.
 
 ---
 
@@ -36,8 +36,8 @@ SplitSync/
 
 1. **Multi-Currency Ledger**: Retains original currencies and transaction values, normalizing to the group's `base_currency` using stored snapshot exchange rates.
 2. **Minimized Debt Matrix**: Server-side greedy network flow resolution reduces redundant cash flows between group members.
-3. **Session-Based Authentication**: Seamless `HttpOnly` cookie-based sessions (`splitsync_session`) managed through Spring Session backed by Redis.
-4. **Receipt OCR Scanner**: High-accuracy receipt extraction mapping visual line items to split allocations.
+3. **Session-Based Authentication**: `HttpOnly` cookie sessions (`splitsync_session`) in Redis, with email/password or Google and GitHub sign-in, email verification, password reset and confirmed email changes.
+4. **Receipt OCR Scanner**: Upload or photograph a receipt to prefill an expense; amounts are parsed as exact decimals and nothing is stored.
 5. **Real-time Analytics**: Monthly spend trends, category breakdowns, and immutable audit logging.
 
 ---
@@ -50,11 +50,13 @@ SplitSync/
 - Java JDK >= 21
 - Docker (for PostgreSQL 16 and Redis 7)
 
-### 1. Databases
+### 1. Databases and mail
 
 ```bash
 docker compose up -d
 ```
+
+This starts PostgreSQL, Redis and [Mailpit](https://mailpit.axllent.org/). Every email the backend sends in development (verification, password reset, email change) lands in the Mailpit inbox at http://localhost:8025.
 
 ### 2. Backend
 
@@ -64,7 +66,20 @@ cd backend
 ./mvnw test              # unit + Testcontainers integration tests (needs Docker)
 ```
 
-Database, Redis, CORS, exchange-rate and rate-limit settings live in `backend/src/main/resources/application.yml` and can be overridden with environment variables. The REST contract is documented in `openapi.yaml`.
+Database, Redis, CORS, mail, exchange-rate and rate-limit settings live in `backend/src/main/resources/application.yml` and can be overridden with environment variables. The REST contract is documented in `openapi.yaml`.
+
+#### Optional features
+
+Each of these is off until configured; the frontend only shows the buttons for features the backend reports as available (`GET /api/config`).
+
+| Feature | Environment variables | Notes |
+|---|---|---|
+| Google sign-in | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Create an OAuth client in Google Cloud Console with redirect URI `http://localhost:8080/api/auth/oauth/callback/google` |
+| GitHub sign-in | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Create a GitHub OAuth app with callback URL `http://localhost:8080/api/auth/oauth/callback/github` |
+| Receipt scanning | `GEMINI_API_KEY` (optional `GEMINI_MODEL`) | Get a key from Google AI Studio; defaults to `gemini-3.5-flash-lite` |
+| Real email delivery | `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`, `APP_MAIL_FROM` | Defaults point at Mailpit |
+
+Set `APP_FRONTEND_URL` when the frontend isn't on `http://localhost:3000`; it is used for links in emails and redirects after sign-in.
 
 ### 3. Frontend
 
