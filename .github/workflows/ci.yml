@@ -30,6 +30,12 @@ jobs:
           cache: maven
       # Unit tests plus Testcontainers integration tests (Postgres and Redis run in Docker on the runner).
       - run: ./mvnw -B -ntp verify
+        env:
+          # Shared runners hit Docker Hub's anonymous pull limit; pull the same official images from
+          # Amazon's public mirror instead. Ryuk (container cleanup) isn't mirrored, and runners are
+          # discarded after the job anyway.
+          TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX: public.ecr.aws/docker/library/
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
 
   frontend:
     name: Frontend checks
