@@ -1,5 +1,6 @@
 package com.splitsync.repository;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -10,7 +11,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.splitsync.entity.Expense;
+import com.splitsync.repository.projection.CurrencyAmount;
 import com.splitsync.repository.projection.GroupSpend;
+import com.splitsync.repository.projection.SpendBucket;
 import com.splitsync.repository.projection.GroupUserAmount;
 
 public interface ExpenseRepository extends JpaRepository<Expense, UUID>, JpaSpecificationExecutor<Expense> {
@@ -36,4 +39,29 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID>, JpaSpec
             from ExpenseSplit s join s.expense e where e.group.id in :groupIds group by e.group.id, s.user.id
             """)
     List<GroupUserAmount> sumOwedByGroupIds(@Param("groupIds") Collection<UUID> groupIds);
+
+    /** Months are bucketed in UTC regardless of the database session time zone. */
+    @Query(value = """
+            select g.base_currency as currency,
+                   to_char(e.occurred_at at time zone 'UTC', 'YYYY-MM') as month,
+                   e.category as category,
+                   sum(e.base_amount) as amount
+            from expenses e join groups g on g.id = e.group_id
+            where e.group_id in (:groupIds) and e.occurred_at >= :from and e.occurred_at <= :to
+            group by 1, 2, 3
+            """, nativeQuery = true)
+    List<SpendBucket> sumSpendBuckets(@Param("groupIds") Collection<UUID> groupIds, @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    @Query(value = """
+            select g.base_currency as currency, sum(s.amount_owed) as amount
+            from expense_splits s
+              join expenses e on e.id = s.expense_id
+              join groups g on g.id = e.group_id
+            where s.user_id = :userId and e.group_id in (:groupIds)
+              and e.occurred_at >= :from and e.occurred_at <= :to
+            group by 1
+            """, nativeQuery = true)
+    List<CurrencyAmount> sumShareByCurrency(@Param("userId") UUID userId, @Param("groupIds") Collection<UUID> groupIds,
+            @Param("from") Instant from, @Param("to") Instant to);
 }

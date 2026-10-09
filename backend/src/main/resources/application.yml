@@ -68,3 +68,15 @@ app:
   fx:
     cache-ttl-hours: 6
     base-url: ${APP_FX_BASE_URL:https://api.frankfurter.dev/v1}
+  rate-limit:
+    enabled: true
+    # Keyed by client IP (login/signup) or by user (search).
+    login:
+      capacity: 10
+      refill-per-minute: 10
+    signup:
+      capacity: 5
+      refill-per-minute: 1
+    user-search:
+      capacity: 30
+      refill-per-minute: 30

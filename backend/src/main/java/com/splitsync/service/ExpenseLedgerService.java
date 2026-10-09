@@ -37,6 +37,7 @@ import com.splitsync.exception.ErrorCode;
 import com.splitsync.repository.ExpenseRepository;
 import com.splitsync.repository.GroupMemberRepository;
 import com.splitsync.service.fx.ExchangeRateService;
+import com.splitsync.util.Categories;
 import com.splitsync.util.Currencies;
 import com.splitsync.util.Money;
 
@@ -56,17 +57,6 @@ public class ExpenseLedgerService {
     public static final int MAX_PAGE_SIZE = 100;
 
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
-    private static final String DEFAULT_CATEGORY = "Other";
-    private static final Map<String, String> CATEGORY_COLORS = Map.of(
-            "Food & Drink", "#f59e0b",
-            "Accommodation", "#6366f1",
-            "Transport", "#3b82f6",
-            "Activities", "#10b981",
-            "Utilities", "#f59e0b",
-            "Home", "#10b981",
-            "Wellness", "#ec4899",
-            "Rent", "#6366f1");
-    private static final String DEFAULT_CATEGORY_COLOR = "#94a3b8";
 
     private final ExpenseRepository expenseRepository;
     private final GroupMemberRepository groupMemberRepository;
@@ -111,13 +101,13 @@ public class ExpenseLedgerService {
         List<BigDecimal> shares = Money.allocate(baseAmount, participants.weights());
 
         String category = request.category() == null || request.category().isBlank()
-                ? DEFAULT_CATEGORY : request.category().trim();
+                ? Categories.DEFAULT : request.category().trim();
         Expense expense = new Expense();
         expense.setGroup(group);
         expense.setPaidBy(payer);
         expense.setTitle(request.title().trim());
         expense.setCategory(category);
-        expense.setCategoryColor(CATEGORY_COLORS.getOrDefault(category, DEFAULT_CATEGORY_COLOR));
+        expense.setCategoryColor(Categories.colorOf(category));
         expense.setAmount(originalAmount);
         expense.setCurrency(currency);
         expense.setExchangeRate(rate);

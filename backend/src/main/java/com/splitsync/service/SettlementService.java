@@ -90,6 +90,18 @@ public class SettlementService {
         return ListResponse.of(data);
     }
 
+    /** Pending settlements where the user pays or receives, newest first. */
+    @Transactional(readOnly = true)
+    public List<SettlementResponse> pendingForUser(UUID userId) {
+        Specification<Settlement> spec = Specification.<Settlement>where((root, query, cb) -> cb.or(
+                        cb.equal(root.get("fromUser").get("id"), userId),
+                        cb.equal(root.get("toUser").get("id"), userId)))
+                .and((root, query, cb) -> cb.equal(root.get("status"), SettlementStatus.PENDING));
+        return settlementRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+                .map(s -> SettlementResponse.from(s, userId))
+                .toList();
+    }
+
     /** Idempotent: paying an already-paid settlement returns it unchanged. */
     @Transactional
     public SettlementResponse pay(UUID settlementId, UUID userId) {
