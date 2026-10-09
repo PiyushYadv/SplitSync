@@ -1,0 +1,464 @@
+openapi: 3.0.3
+info:
+  title: SplitSync REST API
+  description: Collaborative Expense Splitting & Debt Optimization Engine API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api
+    description: Local Spring Boot Development Server
+
+paths:
+  /auth/signup:
+    post:
+      summary: Register a new user
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, example: "Piyush Yadav" }
+                email: { type: string, format: email, example: "piyush@example.com" }
+                password: { type: string, format: password, minLength: 8, example: "password123" }
+      responses:
+        '200':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId: { type: string, format: uuid }
+                  verificationRequired: { type: boolean }
+
+  /auth/login:
+    post:
+      summary: Authenticate user and initiate Redis session
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: "piyush@example.com" }
+                password: { type: string, format: password, example: "password123" }
+      responses:
+        '200':
+          description: Login successful, sets splitsync_session cookie
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "splitsync_session=abc123xyz; Path=/; HttpOnly; SameSite=Lax"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/ApiUser'
+                  expiresAt:
+                    type: string
+                    format: date-time
+
+  /auth/logout:
+    post:
+      summary: Invalidate current session and clear cookie
+      tags: [Authentication]
+      responses:
+        '204':
+          description: Successfully logged out
+
+  /auth/me:
+    get:
+      summary: Get currently authenticated user profile
+      tags: [Authentication]
+      responses:
+        '200':
+          description: Authenticated user details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiUser'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /groups:
+    get:
+      summary: List groups for the authenticated user
+      tags: [Groups]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupSummary'
+                  total: { type: integer }
+    post:
+      summary: Create a new expense group
+      tags: [Groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, emoji, color]
+              properties:
+                name: { type: string, example: "Trip to Tokyo" }
+                emoji: { type: string, example: "✈️" }
+                color: { type: string, example: "indigo" }
+                memberIds:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Group created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupDetail'
+
+  /groups/{id}:
+    get:
+      summary: Get group details with members, expenses, and settlements
+      tags: [Groups]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupDetail'
+
+  /groups/{id}/leave:
+    post:
+      summary: Leave a group
+      tags: [Groups]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Left group successfully
+
+  /expenses:
+    get:
+      summary: List expenses with optional filters
+      tags: [Expenses]
+      parameters:
+        - name: groupId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Expense'
+                  total: { type: integer }
+    post:
+      summary: Create a new expense with itemized splits
+      tags: [Expenses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [groupId, title, amount, currency, paidByUserId, category]
+              properties:
+                groupId: { type: string, format: uuid }
+                title: { type: string, example: "Villa Rental" }
+                amount: { type: number, example: 480.00 }
+                currency: { type: string, example: "USD" }
+                paidByUserId: { type: string, format: uuid }
+                category: { type: string, example: "Accommodation" }
+                splitType:
+                  type: string
+                  enum: [equal, exact, percentage]
+                  default: equal
+                splits:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      userId: { type: string, format: uuid }
+                      amount: { type: number }
+                      percentage: { type: number }
+      responses:
+        '201':
+          description: Expense recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+
+  /settlements:
+    get:
+      summary: List settlements
+      tags: [Settlements]
+      parameters:
+        - name: groupId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, paid] }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Settlement'
+
+  /settlements/{id}/pay:
+    post:
+      summary: Mark a settlement as paid
+      tags: [Settlements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settlement'
+
+  /dashboard:
+    get:
+      summary: Unified dashboard summary
+      tags: [Dashboard]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      totalSpend: { type: number }
+                      youOwe: { type: number }
+                      youAreOwed: { type: number }
+                      pendingSettlements: { type: integer }
+                      currency: { type: string }
+                  groups:
+                    type: array
+                    items: { $ref: '#/components/schemas/GroupSummary' }
+                  expenses:
+                    type: array
+                    items: { $ref: '#/components/schemas/Expense' }
+                  settlements:
+                    type: array
+                    items: { $ref: '#/components/schemas/Settlement' }
+
+  /notifications:
+    get:
+      summary: Get user notifications
+      tags: [Notifications]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  unreadCount: { type: integer }
+
+  /notifications/{id}/read:
+    post:
+      summary: Mark notification as read
+      tags: [Notifications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Marked as read
+
+  /notifications/{id}:
+    delete:
+      summary: Dismiss notification
+      tags: [Notifications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Notification deleted
+
+  /me/settings:
+    get:
+      summary: Get user preferences
+      tags: [Settings]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      summary: Update user preferences
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [section, values]
+              properties:
+                section: { type: string }
+                values: { type: object }
+      responses:
+        '200':
+          description: Updated settings
+
+components:
+  schemas:
+    ApiUser:
+      type: object
+      required: [id, name, email]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        username: { type: string }
+        avatarUrl: { type: string, nullable: true }
+
+    GroupSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        emoji: { type: string }
+        color: { type: string }
+        memberCount: { type: integer }
+        totalSpend: { type: number }
+        balance: { type: number }
+        status: { type: string }
+        lastActivity: { type: string }
+
+    GroupDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        emoji: { type: string }
+        color: { type: string }
+        status: { type: string }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/ApiUser' }
+        expenses:
+          type: array
+          items: { $ref: '#/components/schemas/Expense' }
+        settlements:
+          type: array
+          items: { $ref: '#/components/schemas/Settlement' }
+        balance: { type: number }
+
+    Expense:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        title: { type: string }
+        category: { type: string }
+        categoryColor: { type: string }
+        amount: { type: number }
+        currency: { type: string }
+        paidBy:
+          $ref: '#/components/schemas/ApiUser'
+        splitType: { type: string }
+        date: { type: string, format: date-time }
+
+    Settlement:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        from: { $ref: '#/components/schemas/ApiUser' }
+        to: { $ref: '#/components/schemas/ApiUser' }
+        amount: { type: number }
+        currency: { type: string }
+        status: { type: string }
+        paid: { type: boolean }
+        paidAt: { type: string, format: date-time, nullable: true }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        title: { type: string }
+        desc: { type: string }
+        time: { type: string }
+        read: { type: boolean }
+
+    ApiErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        code: { type: string }
+        fieldErrors:
+          type: object
+          additionalProperties: { type: string }
+
+  responses:
+    UnauthorizedError:
+      description: Missing or invalid splitsync_session cookie
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
