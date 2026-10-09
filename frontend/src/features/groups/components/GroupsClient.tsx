@@ -45,7 +45,8 @@ export default function GroupsClient({
       ),
     [groups, search],
   );
-  const active = groups.filter((group) => group.status === "active").length;
+  // Settled groups still count; only archived ones drop out.
+  const groupCount = groups.filter((group) => group.status !== "archived").length;
   const invitationError = acceptInvitation.error ?? declineInvitation.error;
   const respondingTo = acceptInvitation.isPending
     ? acceptInvitation.variables
@@ -133,7 +134,7 @@ export default function GroupsClient({
           </div>
         )}
         <div className="grid grid-cols-3 gap-4 mb-5">
-          <Metric icon={Users} label="Active Groups" value={String(active)} />
+          <Metric icon={Users} label="Your Groups" value={String(groupCount)} />
           <Metric
             icon={TrendingUp}
             label="Total Across Groups"

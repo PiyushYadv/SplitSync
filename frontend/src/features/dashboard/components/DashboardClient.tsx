@@ -6,8 +6,8 @@ import { useAppContext } from "@/src/context/AppContext";
 import SummaryCards from "@/src/features/dashboard/components/SummaryCards";
 import TransactionTable from "@/src/features/dashboard/components/TransactionTable";
 import SettlementSidebar from "@/src/features/dashboard/components/SettlementSidebar";
-import OCRModal from "@/src/features/dashboard/components/OCRModal";
-import { useCurrentUser, useDashboard } from "@/src/lib/data/queries";
+import ReceiptScanModal from "@/src/features/expenses/components/ReceiptScanModal";
+import { useClientConfig, useCurrentUser, useDashboard } from "@/src/lib/data/queries";
 import { formatMoney, formatSignedMoney } from "@/src/lib/format/money";
 import type { DashboardData } from "@/src/types/domain";
 
@@ -16,10 +16,11 @@ export default function DashboardClient({
 }: {
   initialData: DashboardData;
 }) {
-  const [showOCR, setShowOCR] = useState(false);
+  const [showScan, setShowScan] = useState(false);
   const { searchQuery } = useAppContext();
   const { data = initialData } = useDashboard(initialData);
   const { data: currentUser } = useCurrentUser();
+  const { data: config } = useClientConfig();
   const { summary, groups, expenses, settlements } = data;
 
   const filteredExpenses = useMemo(() => {
@@ -71,12 +72,14 @@ export default function DashboardClient({
         <span className="ml-2 bg-indigo-50 text-indigo-700 text-[10px] font-semibold px-2 py-0.5 rounded-full ring-1 ring-indigo-200">
           All Groups
         </span>
-        <button
-          onClick={() => setShowOCR(true)}
-          className="ml-auto flex items-center gap-1.5 text-xs text-indigo-600 font-semibold border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-md"
-        >
-          <Camera size={13} /> Scan Receipt
-        </button>
+        {config?.receiptScanning && (
+          <button
+            onClick={() => setShowScan(true)}
+            className="ml-auto flex items-center gap-1.5 text-xs text-indigo-600 font-semibold border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-md"
+          >
+            <Camera size={13} /> Scan Receipt
+          </button>
+        )}
       </div>
       <SummaryCards cards={cards} />
       <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 340px" }}>
@@ -97,7 +100,7 @@ export default function DashboardClient({
           currentUserId={currentUser?.id}
         />
       </div>
-      {showOCR && <OCRModal onClose={() => setShowOCR(false)} />}
+      {showScan && <ReceiptScanModal onClose={() => setShowScan(false)} />}
     </div>
   );
 }

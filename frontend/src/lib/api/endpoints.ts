@@ -2,16 +2,21 @@ const id = (value: string) => encodeURIComponent(value);
 
 export const API_ENDPOINTS = {
   auth: {
-    verifyEmail: (token: string) =>
-      `/auth/verify?token=${encodeURIComponent(token)}`,
     login: "/auth/login",
     signup: "/auth/signup",
     forgotPassword: "/auth/forgot-password",
     resetPassword: "/auth/reset-password",
-    oauth: (provider: string) => `/auth/oauth/${provider.toLowerCase()}`,
+    verifyEmail: "/auth/verify-email",
+    resendVerification: "/auth/verify-email/resend",
+    confirmEmailChange: "/auth/confirm-email-change",
+    /** Full-page redirect into the provider's sign-in, not an XHR endpoint. */
+    oauth: (provider: string) => `/auth/oauth/${id(provider)}`,
     logout: "/auth/logout",
     currentUser: "/auth/me",
   },
+  config: "/config",
+  receiptScan: "/receipts/scan",
+  changeEmail: "/me/email",
   userSearch: "/users/search",
   friends: "/friends",
   dashboard: "/dashboard",

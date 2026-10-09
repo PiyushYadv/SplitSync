@@ -10,6 +10,7 @@ import {
 } from "@/src/lib/query/keys";
 import type {
   Analytics,
+  ClientConfig,
   CurrentUser,
   DashboardData,
   Expense,
@@ -28,6 +29,16 @@ import type {
  * pass it in as `initialData`; after that, these hooks keep it fresh in the browser
  * and mutations invalidate them (see mutations.ts).
  */
+
+/** Which optional features (OAuth providers, receipt scanning) the server has configured. */
+export function useClientConfig(initialData?: ClientConfig) {
+  return useQuery({
+    queryKey: queryKeys.config,
+    queryFn: () => apiGet<ClientConfig>(API_ENDPOINTS.config),
+    initialData,
+    staleTime: Infinity,
+  });
+}
 
 export function useCurrentUser(initialData?: CurrentUser) {
   return useQuery({

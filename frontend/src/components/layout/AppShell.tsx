@@ -17,6 +17,7 @@ import {
   Receipt,
   UserPlus,
   CheckCheck,
+  MailWarning,
 } from "lucide-react";
 
 import { useAppContext } from "@/src/context/AppContext";
@@ -31,9 +32,12 @@ import {
   useLogout,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
+  useResendVerification,
   useSaveSettings,
 } from "@/src/lib/data/mutations";
+import { errorMessage } from "@/src/lib/api/client";
 import {
+  useClientConfig,
   useCurrentUser,
   useExpenses,
   useGroups,
@@ -42,7 +46,7 @@ import {
 } from "@/src/lib/data/queries";
 import { formatRelativeTime } from "@/src/lib/format/date";
 import { formatMoney } from "@/src/lib/format/money";
-import type { CurrentUser, Notification } from "@/src/types/domain";
+import type { ClientConfig, CurrentUser, Notification } from "@/src/types/domain";
 
 const NOTIF_ICON = {
   expense: <Receipt size={13} className="text-indigo-600" />,
@@ -73,11 +77,40 @@ function initialsOf(name: string) {
   ).toUpperCase();
 }
 
+/** Unverified accounts work normally; this just nudges them to confirm their address. */
+function VerifyEmailBanner({ email }: { email: string }) {
+  const resend = useResendVerification();
+  return (
+    <div className="flex items-center gap-2 px-6 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800 shrink-0">
+      <MailWarning size={14} className="shrink-0" />
+      <span className="flex-1 min-w-0 truncate">
+        Verify your email: we sent a link to <strong>{email}</strong>.
+      </span>
+      {resend.isSuccess ? (
+        <span className="font-semibold">Sent. Check your inbox.</span>
+      ) : (
+        <button
+          onClick={() => resend.mutate()}
+          disabled={resend.isPending}
+          className="font-semibold text-amber-900 underline underline-offset-2 disabled:opacity-50"
+        >
+          {resend.isPending ? "Sending…" : "Resend link"}
+        </button>
+      )}
+      {resend.isError && (
+        <span className="text-rose-600">{errorMessage(resend.error)}</span>
+      )}
+    </div>
+  );
+}
+
 export default function AppShell({
   initialUser,
+  initialConfig,
   children,
 }: {
   initialUser: CurrentUser;
+  initialConfig: ClientConfig;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -95,6 +128,8 @@ export default function AppShell({
   const searchRef = useRef<HTMLDivElement>(null);
 
   const { data: currentUser } = useCurrentUser(initialUser);
+  // Seeds the cache so pages can show feature buttons (receipt scanning) on first render.
+  useClientConfig(initialConfig);
   const { data: groups = [] } = useGroups();
   const { data: settings } = useSettings();
   const { data: notificationList } = useNotifications();
@@ -175,10 +210,6 @@ export default function AppShell({
 
           <span className="font-bold text-slate-900 text-sm tracking-tight">
             SplitSync
-          </span>
-
-          <span className="ml-auto text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded ring-1 ring-indigo-200">
-            Pro
           </span>
         </div>
 
@@ -555,6 +586,10 @@ export default function AppShell({
             </button>
           </div>
         </header>
+
+        {currentUser && !currentUser.emailVerified && (
+          <VerifyEmailBanner email={currentUser.email} />
+        )}
 
         {/* PAGE */}
         <main className="flex-1 overflow-y-auto">{children}</main>

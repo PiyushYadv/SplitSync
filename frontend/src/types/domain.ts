@@ -16,6 +16,26 @@ export type CurrentUser = {
   email: string;
   username?: string;
   avatarUrl?: string;
+  emailVerified: boolean;
+};
+
+export type OAuthProvider = "google" | "github";
+
+/** Optional features this deployment has configured. */
+export type ClientConfig = {
+  oauthProviders: OAuthProvider[];
+  receiptScanning: boolean;
+};
+
+/** Values read from a receipt photo; anything unreadable is omitted. */
+export type ScannedReceipt = {
+  title?: string;
+  amount: number;
+  currency?: string;
+  /** yyyy-MM-dd */
+  date?: string;
+  category: string;
+  items: Array<{ name: string; amount: number }>;
 };
 
 /** Public view of a user; `email` is only present for yourself. */
@@ -186,6 +206,9 @@ export type Settings = {
     email: string;
     username?: string;
     avatarUrl?: string;
+    emailVerified: boolean;
+    /** False for accounts that only sign in with Google or GitHub. */
+    hasPassword: boolean;
   };
   notifications: NotificationPreferences;
   currency: string;

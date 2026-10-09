@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check } from "lucide-react";
-import SocialButton from "@/src/features/auth/components/SocialButton";
+import SocialSignIn from "@/src/features/auth/components/SocialSignIn";
 import FormInput from "@/src/features/auth/components/FormInput";
 import PasswordInput from "@/src/features/auth/components/PasswordInput";
 import AuthLayout from "@/src/features/auth/components/AuthLayout";
@@ -51,7 +51,7 @@ export default function Signup() {
         setDone(true);
         return;
       }
-      // No email verification step yet: sign the new user straight in.
+      // Verification is a nudge, not a gate: sign the new user straight in.
       await login.mutateAsync(credentials);
       router.replace("/dashboard");
     } catch (error) {
@@ -88,17 +88,7 @@ export default function Signup() {
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
-          <div className="mb-5 flex flex-col gap-3">
-            <SocialButton provider="Google" />
-            <SocialButton provider="Github" />
-            <SocialButton provider="Apple" />
-          </div>
-
-          <div className="flex items-center gap-3 my-4">
-            <div className="flex-1 h-px bg-slate-200" />
-            <span className="text-xs text-slate-400">or</span>
-            <div className="flex-1 h-px bg-slate-200" />
-          </div>
+          <SocialSignIn />
 
           <form
             onSubmit={handleSubmit(onSubmit)}

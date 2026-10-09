@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronRight, Clock, TrendingUp, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import SummaryCards from "@/src/features/dashboard/components/SummaryCards";
-import OCRModal from "@/src/features/dashboard/components/OCRModal";
+import ReceiptScanModal from "@/src/features/expenses/components/ReceiptScanModal";
 import NewExpenseModal from "@/src/features/expenses/components/NewExpenseModal";
 import GroupHeaderActions from "@/src/features/groups/components/GroupHeaderActions";
 import GroupExpenseTable from "@/src/features/groups/components/GroupExpenseTable";
@@ -14,7 +14,7 @@ import { GROUP_COLOR_STYLES } from "@/src/features/groups/types";
 import SettlementPanel from "@/src/features/settlements/components/SettlementPanel";
 import { errorMessage } from "@/src/lib/api/client";
 import { useLeaveGroup } from "@/src/lib/data/mutations";
-import { useCurrentUser, useGroup } from "@/src/lib/data/queries";
+import { useClientConfig, useCurrentUser, useGroup } from "@/src/lib/data/queries";
 import { formatMoney, formatSignedMoney } from "@/src/lib/format/money";
 import type { GroupDetail } from "@/src/types/domain";
 
@@ -28,6 +28,7 @@ export default function GroupDetailClient({
   const router = useRouter();
   const { data: group = initialGroup } = useGroup(initialGroup.id, initialGroup);
   const { data: currentUser } = useCurrentUser();
+  const { data: config } = useClientConfig();
   const leaveGroup = useLeaveGroup();
   const [modal, setModal] = useState<Modal>(null);
 
@@ -86,7 +87,7 @@ export default function GroupDetailClient({
         </span>
         <GroupHeaderActions
           onAddExpense={() => setModal("expense")}
-          onScan={() => setModal("scan")}
+          onScan={config?.receiptScanning ? () => setModal("scan") : undefined}
           onInvite={() => setModal("invite")}
           onLeave={() => {
             leaveGroup.reset();
@@ -103,7 +104,7 @@ export default function GroupDetailClient({
         <NewExpenseModal defaultGroupId={group.id} onClose={() => setModal(null)} />
       )}
       {modal === "scan" && (
-        <OCRModal defaultGroupId={group.id} onClose={() => setModal(null)} />
+        <ReceiptScanModal defaultGroupId={group.id} onClose={() => setModal(null)} />
       )}
       {modal === "invite" && (
         <InviteMembersModal

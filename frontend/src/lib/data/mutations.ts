@@ -11,6 +11,7 @@ import type {
   Invitation,
   ListResponse,
   NotificationList,
+  ScannedReceipt,
   Settings,
   SplitType,
 } from "@/src/types/domain";
@@ -85,6 +86,33 @@ export function useLogout() {
  * `idempotencyKey` should be generated once per form, so a retried submit after a
  * network error can't create the expense twice.
  */
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: () => apiSend("POST", API_ENDPOINTS.auth.resendVerification),
+  });
+}
+
+/** Sends a confirmation link to the new address; the email changes once it's opened. */
+export function useChangeEmail() {
+  return useMutation({
+    mutationFn: (input: { email: string; currentPassword?: string }) =>
+      apiSend("POST", API_ENDPOINTS.changeEmail, input),
+  });
+}
+
+export function useScanReceipt() {
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      // Overrides the client's JSON default; the browser then adds the multipart boundary.
+      return apiSend<ScannedReceipt>("POST", API_ENDPOINTS.receiptScan, form, {
+        "Content-Type": "multipart/form-data",
+      });
+    },
+  });
+}
+
 export function useCreateExpense() {
   const queryClient = useQueryClient();
   return useMutation({

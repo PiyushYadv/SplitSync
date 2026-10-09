@@ -16,10 +16,14 @@ import {
 } from "@/src/lib/validation/expenses";
 import type { GroupMember, SplitType } from "@/src/types/domain";
 
+/** Starting values, e.g. read from a receipt. */
 export type ExpensePrefill = {
   title?: string;
   amount?: string;
   category?: string;
+  currency?: string;
+  /** yyyy-MM-dd */
+  date?: string;
 };
 
 type Participant = { included: boolean; value: string };
@@ -66,8 +70,9 @@ export default function ExpenseForm({
   const [title, setTitle] = useState(prefill?.title ?? "");
   const [amount, setAmount] = useState(prefill?.amount ?? "");
   const [category, setCategory] = useState(prefill?.category ?? EXPENSE_CATEGORIES[0]);
-  const [date, setDate] = useState(todayIso);
-  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null);
+  const [date, setDate] = useState(() => prefill?.date ?? todayIso());
+  // A receipt's currency wins over the group's default.
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(prefill?.currency ?? null);
   const [payerChoice, setPayerChoice] = useState<string | null>(null);
   const [splitType, setSplitType] = useState<SplitType>("equal");
   const [participantState, setParticipantState] = useState<ParticipantState | null>(null);
@@ -105,7 +110,7 @@ export default function ExpenseForm({
 
   function changeGroup(nextGroupId: string) {
     setSelectedGroupId(nextGroupId);
-    setCurrencyChoice(null);
+    setCurrencyChoice(prefill?.currency ?? null);
     setPayerChoice(null);
     setFieldErrors({});
   }

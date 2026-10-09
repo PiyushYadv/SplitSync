@@ -9,7 +9,8 @@ export default function GroupHeaderActions({
   onLeave,
 }: {
   onAddExpense: () => void;
-  onScan: () => void;
+  /** Omitted when receipt scanning isn't configured. */
+  onScan?: () => void;
   onInvite: () => void;
   onLeave: () => void;
 }) {
@@ -21,12 +22,14 @@ export default function GroupHeaderActions({
       >
         <UserPlus size={13} /> Invite
       </button>
-      <button
-        onClick={onScan}
-        className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-500 font-semibold border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-md transition-colors"
-      >
-        <Camera size={13} /> Scan Receipt
-      </button>
+      {onScan && (
+        <button
+          onClick={onScan}
+          className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-500 font-semibold border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-md transition-colors"
+        >
+          <Camera size={13} /> Scan Receipt
+        </button>
+      )}
       <button
         onClick={onAddExpense}
         className="flex items-center gap-1.5 text-xs text-white font-semibold bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded-md transition-colors"

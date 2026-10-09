@@ -10,7 +10,11 @@ import {
 } from "@/src/features/settings/sections";
 import { ApiError, errorMessage } from "@/src/lib/api/client";
 import { CURRENCY_CODES } from "@/src/lib/currency/currencies";
-import { useSaveSettings, type SettingsSection } from "@/src/lib/data/mutations";
+import {
+  useChangeEmail,
+  useSaveSettings,
+  type SettingsSection,
+} from "@/src/lib/data/mutations";
 import { useSettings } from "@/src/lib/data/queries";
 import {
   useTheme,
@@ -56,6 +60,7 @@ export default function SettingsClient({ initialData }: { initialData: Settings 
   const [currency, setCurrency] = useState(settings.currency);
   const [draftTheme, setDraftTheme] = useState<ThemePreference>(settings.theme);
   const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
+  const { hasPassword, emailVerified } = settings.profile;
 
   const switchSection = (id: SettingsSectionId) => {
     setActive(id);
@@ -81,12 +86,14 @@ export default function SettingsClient({ initialData }: { initialData: Settings 
       case "security":
         if (passwords.next.length < 8) return "New password must be at least 8 characters";
         if (passwords.next !== passwords.confirm) return "New passwords don't match";
-        return { currentPassword: passwords.current, newPassword: passwords.next };
+        // Google/GitHub-only accounts set their first password without a current one.
+        return hasPassword
+          ? { currentPassword: passwords.current, newPassword: passwords.next }
+          : { newPassword: passwords.next };
     }
   }
 
   const save = () => {
-    if (active === "billing") return;
     setFieldErrors({});
     setLocalError(null);
     const values = valuesFor(active);
@@ -158,7 +165,7 @@ export default function SettingsClient({ initialData }: { initialData: Settings 
                     label="Email address"
                     value={settings.profile.email}
                     readOnly
-                    hint="Email changes aren't supported yet"
+                    hint={emailVerified ? "Verified" : "Not verified yet: check your inbox"}
                   />
                   <TextField
                     label="Avatar URL"
@@ -220,13 +227,20 @@ export default function SettingsClient({ initialData }: { initialData: Settings 
 
               {active === "security" && (
                 <div className="grid grid-cols-1 gap-4 max-w-sm">
-                  <TextField
-                    label="Current password"
-                    type="password"
-                    value={passwords.current}
-                    error={fieldErrors.currentPassword}
-                    onChange={(current) => setPasswords({ ...passwords, current })}
-                  />
+                  {hasPassword ? (
+                    <TextField
+                      label="Current password"
+                      type="password"
+                      value={passwords.current}
+                      error={fieldErrors.currentPassword}
+                      onChange={(current) => setPasswords({ ...passwords, current })}
+                    />
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      You sign in with Google or GitHub. Set a password to also sign in with
+                      your email.
+                    </p>
+                  )}
                   <TextField
                     label="New password"
                     type="password"
@@ -245,10 +259,6 @@ export default function SettingsClient({ initialData }: { initialData: Settings 
                     Changing your password signs you out on all other devices.
                   </p>
                 </div>
-              )}
-
-              {active === "billing" && (
-                <p className="text-sm text-slate-500">Billing isn&apos;t available yet.</p>
               )}
 
               {active === "appearance" && (
@@ -286,13 +296,74 @@ export default function SettingsClient({ initialData }: { initialData: Settings 
               )}
             </section>
             {error && <p className="text-sm text-rose-600">{error}</p>}
-            {active !== "billing" && (
-              <SaveButton saved={saved} pending={saveSettings.isPending} onClick={save} />
-            )}
+            <SaveButton saved={saved} pending={saveSettings.isPending} onClick={save} />
+            {active === "profile" && <ChangeEmailForm hasPassword={hasPassword} />}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Emails a confirmation link to the new address; nothing changes until it's opened. */
+function ChangeEmailForm({ hasPassword }: { hasPassword: boolean }) {
+  const changeEmail = useChangeEmail();
+  const [email, setEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const fieldErrors =
+    changeEmail.error instanceof ApiError ? (changeEmail.error.fieldErrors ?? {}) : {};
+
+  const submit = () =>
+    changeEmail.mutate(
+      { email: email.trim(), currentPassword: hasPassword ? currentPassword : undefined },
+      { onSuccess: () => setCurrentPassword("") },
+    );
+
+  return (
+    <section className="bg-white border border-slate-200 rounded-xl p-6">
+      <h2 className="text-sm font-bold text-slate-900 mb-1">Change email</h2>
+      <p className="text-xs text-slate-400 mb-5">
+        We&apos;ll send a confirmation link to the new address. Your email changes once you
+        open it.
+      </p>
+      {changeEmail.isSuccess ? (
+        <p className="text-sm text-emerald-600">
+          Check <strong>{changeEmail.variables.email}</strong> for a confirmation link.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 items-start">
+          <TextField
+            label="New email"
+            type="email"
+            value={email}
+            error={fieldErrors.email}
+            placeholder="you@example.com"
+            onChange={setEmail}
+          />
+          {hasPassword && (
+            <TextField
+              label="Current password"
+              type="password"
+              value={currentPassword}
+              error={fieldErrors.currentPassword}
+              onChange={setCurrentPassword}
+            />
+          )}
+          <div className="col-span-2 flex items-center gap-3">
+            <button
+              onClick={submit}
+              disabled={changeEmail.isPending || !email.trim()}
+              className="border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-sm font-semibold text-slate-700 px-4 py-2 rounded-lg"
+            >
+              {changeEmail.isPending ? "Sending…" : "Send confirmation link"}
+            </button>
+            {changeEmail.isError && Object.keys(fieldErrors).length === 0 && (
+              <p className="text-xs text-rose-600">{errorMessage(changeEmail.error)}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

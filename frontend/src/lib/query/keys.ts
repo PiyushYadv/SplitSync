@@ -14,6 +14,7 @@ export type AnalyticsFilters = {
 };
 
 export const queryKeys = {
+  config: ["config"] as const,
   currentUser: ["currentUser"] as const,
   dashboard: ["dashboard"] as const,
   groups: ["groups"] as const,

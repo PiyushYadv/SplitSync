@@ -44,7 +44,7 @@ export default function ForgotPassword() {
       title={done ? "Check your inbox" : "Forgot your password?"}
       description={
         done
-          ? `We sent a password reset link to ${getValues("email")}`
+          ? `If an account exists for ${getValues("email")}, we've sent it a reset link`
           : "Enter your email and we'll send you a reset link"
       }
     >
