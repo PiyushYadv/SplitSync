@@ -11,7 +11,7 @@ public record AppProperties(String frontendUrl, Cors cors, Session session, Fx f
     public record Cors(List<String> allowedOrigins) {
     }
 
-    public record Session(String cookieName, String cookieSameSite, boolean cookieSecure) {
+    public record Session(String cookieName, String cookieSameSite, boolean cookieSecure, boolean configureRedis) {
     }
 
     public record Fx(int cacheTtlHours, String baseUrl) {
@@ -22,7 +22,7 @@ public record AppProperties(String frontendUrl, Cors cors, Session session, Fx f
     }
 
     /** A provider is offered only when both its client id and secret are set. */
-    public record OAuth(Client google, Client github) {
+    public record OAuth(String redirectBaseUrl, Client google, Client github) {
     }
 
     public record Client(String clientId, String clientSecret) {

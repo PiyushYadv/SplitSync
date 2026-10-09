@@ -6,8 +6,14 @@ import { API_URL, ApiError, type ApiErrorResponse } from "./client";
 
 const SESSION_COOKIE = "splitsync_session";
 
-/** Lets the Next.js server reach the backend on a private address in production. */
+/**
+ * The backend as the Next.js server reaches it. Required when the browser uses a relative
+ * NEXT_PUBLIC_API_URL (proxied through this app), since a server-side fetch needs an absolute URL.
+ */
 const SERVER_API_URL = process.env.API_INTERNAL_URL ?? API_URL;
+if (!/^https?:\/\//.test(SERVER_API_URL)) {
+  throw new Error("Set API_INTERNAL_URL to the backend's absolute URL (e.g. https://api.example.com/api)");
+}
 
 /**
  * Fetches from the backend inside a Server Component. Server-side requests don't

@@ -12,7 +12,8 @@ import com.splitsync.entity.enums.AuthProvider;
 
 /**
  * Builds a client registration for each provider whose credentials are configured. The callback URL to register
- * with the provider is {@code <backend>/api/auth/oauth/callback/<provider>}.
+ * with the provider is {@code <redirect base>/auth/oauth/callback/<provider>}, where the base defaults to this
+ * server's own {@code .../api} URL (see {@code app.oauth.redirect-base-url}).
  */
 @Component
 public class OAuthRegistrations {
@@ -25,14 +26,16 @@ public class OAuthRegistrations {
     public OAuthRegistrations(AppProperties appProperties) {
         AppProperties.OAuth oauth = appProperties.oauth();
         List<ClientRegistration> list = new ArrayList<>();
+        String redirectUri = oauth.redirectBaseUrl() + CALLBACK_BASE_URI + "/{registrationId}";
         if (oauth.google().isConfigured()) {
             // Plain OAuth2 with the userinfo endpoint (no "openid" scope), so both providers share one user service.
-            list.add(build(CommonOAuth2Provider.GOOGLE, AuthProvider.GOOGLE, oauth.google(), "profile", "email"));
+            list.add(build(CommonOAuth2Provider.GOOGLE, AuthProvider.GOOGLE, oauth.google(), redirectUri,
+                    "profile", "email"));
         }
         if (oauth.github().isConfigured()) {
             // user:email is needed to read a private primary address and whether it is verified.
-            list.add(build(CommonOAuth2Provider.GITHUB, AuthProvider.GITHUB, oauth.github(), "read:user",
-                    "user:email"));
+            list.add(build(CommonOAuth2Provider.GITHUB, AuthProvider.GITHUB, oauth.github(), redirectUri,
+                    "read:user", "user:email"));
         }
         this.registrations = List.copyOf(list);
     }
@@ -46,12 +49,12 @@ public class OAuthRegistrations {
     }
 
     private static ClientRegistration build(CommonOAuth2Provider template, AuthProvider provider,
-            AppProperties.Client client, String... scopes) {
+            AppProperties.Client client, String redirectUri, String... scopes) {
         return template.getBuilder(provider.dbValue())
                 .clientId(client.clientId())
                 .clientSecret(client.clientSecret())
                 .scope(scopes)
-                .redirectUri("{baseUrl}" + CALLBACK_BASE_URI + "/{registrationId}")
+                .redirectUri(redirectUri)
                 .build();
     }
 }
