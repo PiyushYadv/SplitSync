@@ -1,11 +1,15 @@
 package com.splitsync.util;
 
+import java.util.List;
 import java.util.Map;
 
 /** Expense categories offered by the frontend and the colour each one is drawn with. */
 public final class Categories {
 
     public static final String DEFAULT = "Other";
+    /** In the order the frontend lists them. */
+    public static final List<String> NAMES = List.of("Food & Drink", "Accommodation", "Transport", "Activities",
+            "Utilities", "Home", "Rent", "Wellness", DEFAULT);
     private static final String DEFAULT_COLOR = "#94a3b8";
     private static final Map<String, String> COLORS = Map.of(
             "Food & Drink", "#f59e0b",

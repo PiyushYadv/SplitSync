@@ -22,17 +22,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.splitsync.service.fx.ExchangeRateProvider;
 import com.splitsync.service.fx.ExchangeRateService;
+import com.splitsync.service.mail.EmailSender;
+import com.splitsync.service.mail.OutgoingEmail;
+import com.splitsync.service.receipt.ReceiptScanner;
 
 import jakarta.servlet.http.Cookie;
 
 /**
  * Starts Postgres and Redis once for the whole test run; every integration test class shares them and the
- * Spring context. The external FX API is replaced with a mock.
+ * Spring context. The external FX API, SMTP and the receipt scanner are replaced with mocks.
  */
 @SpringBootTest(properties = {
         // Every test logs in from 127.0.0.1, so keep the per-IP auth limits out of the way.
         "app.rate-limit.login.capacity=100000",
         "app.rate-limit.signup.capacity=100000",
+        "app.rate-limit.email.capacity=100000",
         // Small enough that a test can exhaust it.
         "app.rate-limit.user-search.capacity=5",
         "app.rate-limit.user-search.refill-per-minute=1" })
@@ -60,6 +64,13 @@ public abstract class IntegrationTestBase {
 
     @MockBean
     protected ExchangeRateProvider exchangeRateProvider;
+
+    /** Captures outgoing email instead of talking to SMTP. */
+    @MockBean
+    protected EmailSender emailSender;
+
+    @MockBean
+    protected ReceiptScanner receiptScanner;
 
     @Autowired
     private CacheManager cacheManager;
@@ -119,6 +130,30 @@ public abstract class IntegrationTestBase {
                         .content(json("groupId", groupId, "title", title, "amount", amount, "currency", currency,
                                 "paidByUserId", payer.id(), "category", category)))
                 .andExpect(status().isCreated()));
+    }
+
+    /** Waits for the asynchronously sent email to {@code to} whose subject contains {@code subject}. */
+    protected OutgoingEmail awaitEmail(String to, String subject) throws InterruptedException {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            var match = org.mockito.Mockito.mockingDetails(emailSender).getInvocations().stream()
+                    .map(invocation -> (OutgoingEmail) invocation.getArgument(0))
+                    .filter(email -> email.to().equals(to) && email.subject().contains(subject))
+                    .reduce((first, second) -> second);
+            if (match.isPresent()) {
+                return match.get();
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("No \"" + subject + "\" email sent to " + to);
+    }
+
+    /** The token from the link in an email. */
+    protected static String tokenIn(OutgoingEmail email) {
+        var matcher = java.util.regex.Pattern.compile("token=([A-Za-z0-9_-]+)").matcher(email.text());
+        if (!matcher.find()) {
+            throw new AssertionError("No link in email: " + email.text());
+        }
+        return matcher.group(1);
     }
 
     protected String json(Object... keyValues) throws Exception {

@@ -37,7 +37,8 @@ public class User {
     @Column(unique = true, length = 100)
     private String username;
 
-    @Column(name = "password_hash", nullable = false)
+    /** Null for accounts that only sign in with Google or GitHub. */
+    @Column(name = "password_hash")
     private String passwordHash;
 
     @Column(name = "avatar_url", length = 1024)

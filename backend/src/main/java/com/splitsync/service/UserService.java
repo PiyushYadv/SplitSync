@@ -31,19 +31,34 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserSettingsRepository userSettingsRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AccountService accountService;
 
     @Transactional
     public User register(SignupRequest request) {
-        String email = normalizeEmail(request.email());
+        User user = create(request.name().trim(), normalizeEmail(request.email()),
+                passwordEncoder.encode(request.password()), null, false);
+        accountService.sendVerificationEmail(user);
+        return user;
+    }
+
+    /** Creates an account for a Google or GitHub sign-in: no password, and the provider verified the email. */
+    @Transactional
+    public User registerExternal(String name, String email, String avatarUrl) {
+        return create(name.trim(), email, null, avatarUrl, true);
+    }
+
+    private User create(String name, String email, String passwordHash, String avatarUrl, boolean emailVerified) {
         if (userRepository.existsByEmail(email)) {
             throw emailTaken();
         }
 
         User user = new User();
-        user.setName(request.name().trim());
+        user.setName(name);
         user.setEmail(email);
         user.setUsername(generateUsername(email));
-        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setPasswordHash(passwordHash);
+        user.setAvatarUrl(avatarUrl);
+        user.setEmailVerified(emailVerified);
 
         try {
             user = userRepository.saveAndFlush(user);

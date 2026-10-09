@@ -10,6 +10,8 @@ public record SettingsResponse(
         String language,
         String dateFormat) {
 
-    public record Profile(String name, String email, String username, String avatarUrl) {
+    /** {@code hasPassword} is false for accounts that only sign in with Google or GitHub. */
+    public record Profile(String name, String email, String username, String avatarUrl, boolean emailVerified,
+            boolean hasPassword) {
     }
 }

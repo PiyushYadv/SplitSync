@@ -9,8 +9,6 @@ import java.util.regex.Pattern;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.session.FindByIndexNameSessionRepository;
-import org.springframework.session.Session;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +40,7 @@ public class SettingsService {
     private final UserRepository userRepository;
     private final UserSettingsRepository userSettingsRepository;
     private final PasswordEncoder passwordEncoder;
-    private final FindByIndexNameSessionRepository<? extends Session> sessionRepository;
+    private final SessionRevocationService sessionRevocationService;
 
     @Transactional
     public SettingsResponse get(UUID userId) {
@@ -69,7 +67,6 @@ public class SettingsService {
             }
             case "appearance" -> updateAppearance(settings, values);
             case "security" -> changePassword(user, values, currentSessionId);
-            case "billing" -> throw ApiExceptions.invalidField("section", "Billing settings are not available yet");
             default -> throw ApiExceptions.invalidField("section", "Unknown settings section '" + section + "'");
         }
         return toResponse(user, settings);
@@ -147,21 +144,25 @@ public class SettingsService {
         }
     }
 
-    /** Changing the password signs the user out everywhere except the session that made the change. */
+    /**
+     * Changing the password signs the user out everywhere except the session that made the change. Accounts
+     * created with Google or GitHub have no password yet and can set one without a current password.
+     */
     private void changePassword(User user, Map<String, Object> values, String currentSessionId) {
-        requireOnly(values, Set.of("currentPassword", "newPassword"));
-        String current = requireString(values, "currentPassword", 72);
-        String next = requireString(values, "newPassword", 72);
-        if (!passwordEncoder.matches(current, user.getPasswordHash())) {
-            throw ApiExceptions.invalidField("currentPassword", "Current password is incorrect");
+        boolean hasPassword = user.getPasswordHash() != null;
+        requireOnly(values, hasPassword ? Set.of("currentPassword", "newPassword") : Set.of("newPassword"));
+        if (hasPassword) {
+            String current = requireString(values, "currentPassword", 72);
+            if (!passwordEncoder.matches(current, user.getPasswordHash())) {
+                throw ApiExceptions.invalidField("currentPassword", "Current password is incorrect");
+            }
         }
+        String next = requireString(values, "newPassword", 72);
         if (next.length() < 8) {
             throw ApiExceptions.invalidField("newPassword", "Password must be 8-72 characters");
         }
         user.setPasswordHash(passwordEncoder.encode(next));
-        sessionRepository.findByPrincipalName(user.getEmail()).keySet().stream()
-                .filter(id -> !id.equals(currentSessionId))
-                .forEach(sessionRepository::deleteById);
+        sessionRevocationService.revokeAll(user.getId(), currentSessionId);
     }
 
     private User loadUser(UUID userId) {
@@ -194,7 +195,8 @@ public class SettingsService {
     private static SettingsResponse toResponse(User user, UserSettings settings) {
         String handle = user.getUsername() == null ? null : "@" + user.getUsername();
         return new SettingsResponse(
-                new SettingsResponse.Profile(user.getName(), user.getEmail(), handle, user.getAvatarUrl()),
+                new SettingsResponse.Profile(user.getName(), user.getEmail(), handle, user.getAvatarUrl(),
+                        user.isEmailVerified(), user.getPasswordHash() != null),
                 settings.getNotificationPreferences(),
                 settings.getCurrency(),
                 settings.getTheme(),

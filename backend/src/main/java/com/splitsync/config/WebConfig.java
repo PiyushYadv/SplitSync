@@ -30,13 +30,22 @@ public class WebConfig implements WebMvcConfigurer {
         if (!limits.enabled()) {
             return;
         }
-        // Paths are relative to the /api context path. Only login/signup POSTs reach these handlers.
+        // Paths are relative to the /api context path.
         registry.addInterceptor(RateLimitInterceptor.perClientIp("login", limits.login(), rateLimiter, objectMapper))
                 .addPathPatterns("/auth/login");
         registry.addInterceptor(RateLimitInterceptor.perClientIp("signup", limits.signup(), rateLimiter, objectMapper))
                 .addPathPatterns("/auth/signup");
         registry.addInterceptor(RateLimitInterceptor.perUser("user-search", limits.userSearch(), rateLimiter, objectMapper))
                 .addPathPatterns("/users/search");
+        // Every request below can send an email.
+        registry.addInterceptor(RateLimitInterceptor.perClientIp("password-reset", limits.email(), rateLimiter, objectMapper))
+                .addPathPatterns("/auth/forgot-password");
+        registry.addInterceptor(RateLimitInterceptor.perUser("verification-email", limits.email(), rateLimiter, objectMapper))
+                .addPathPatterns("/auth/verify-email/resend");
+        registry.addInterceptor(RateLimitInterceptor.perUser("email-change", limits.email(), rateLimiter, objectMapper))
+                .addPathPatterns("/me/email");
+        registry.addInterceptor(RateLimitInterceptor.perUser("receipt-scan", limits.receiptScan(), rateLimiter, objectMapper))
+                .addPathPatterns("/receipts/scan");
     }
 
     /** Lets query params like {@code ?status=pending} bind to enums by their lowercase API value. */

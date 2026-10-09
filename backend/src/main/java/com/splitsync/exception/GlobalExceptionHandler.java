@@ -17,6 +17,9 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -62,6 +65,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleBadCredentials(Exception ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiErrorResponse.of("Invalid email or password", ErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiErrorResponse("File must be 10 MB or smaller", ErrorCode.VALIDATION_ERROR,
+                        Map.of("file", "File must be 10 MB or smaller")));
+    }
+
+    @ExceptionHandler({ MissingServletRequestPartException.class, MultipartException.class })
+    public ResponseEntity<ApiErrorResponse> handleBadMultipart(Exception ex) {
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse("Attach a file to upload", ErrorCode.MALFORMED_REQUEST,
+                        Map.of("file", "Attach a file to upload")));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
