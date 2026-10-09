@@ -1,5 +1,6 @@
 package com.splitsync.security.oauth;
 
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,7 +28,9 @@ public class OAuthAccountService {
         UserIdentity.Key key = new UserIdentity.Key(profile.provider(), profile.subject());
         var linked = userIdentityRepository.findById(key);
         if (linked.isPresent()) {
-            return linked.get().getUser();
+            // The identity's user is a lazy proxy; load it here, because the caller reads it after this
+            // transaction (and its persistence context) has closed.
+            return Hibernate.unproxy(linked.get().getUser(), User.class);
         }
 
         // Matching accounts by email is only safe when the provider has verified that address.

@@ -52,6 +52,9 @@ class OAuthAccountIntegrationTest extends IntegrationTestBase {
         User again = oauthAccountService.signIn(profile(AuthProvider.GITHUB, subject, unique("b") + "@x.dev", true));
 
         assertThat(again.getId()).isEqualTo(first.getId());
+        // Read outside signIn's transaction, as the OAuth user service does when building the principal.
+        assertThat(again.getEmail()).isEqualTo(first.getEmail());
+        assertThat(UserPrincipal.from(again).getPassword()).isNull();
     }
 
     @Test
