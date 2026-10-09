@@ -37,6 +37,15 @@ jobs:
           TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX: public.ecr.aws/docker/library/
           TESTCONTAINERS_RYUK_DISABLED: 'true'
 
+  backend-image:
+    name: Backend Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      # Builds what Render deploys, including the Class Data Sharing training run; nothing is pushed.
+      - run: docker build --tag splitsync-api:ci backend
+
   frontend:
     name: Frontend checks
     runs-on: ubuntu-latest

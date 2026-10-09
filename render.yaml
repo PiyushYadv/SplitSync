@@ -1,0 +1,76 @@
+# Render Blueprint for the SplitSync API. Create it from the Render dashboard (New > Blueprint); Render
+# asks for every `sync: false` value once, at creation. Postgres (Neon) and Redis (Upstash) live outside
+# Render: Render's free Postgres expires after 30 days.
+services:
+  - type: web
+    name: splitsync-api
+    runtime: docker
+    plan: free
+    # Keep the database, Redis and Vercel functions in the same region.
+    region: singapore
+    rootDir: backend
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/config
+    autoDeployTrigger: checksPass
+    envVars:
+      # --- Database (Neon) ---
+      - key: SPRING_DATASOURCE_URL # jdbc:postgresql://<host>/<db>?sslmode=require
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      # Small pool that drops idle connections, so Neon's free compute can suspend when unused.
+      - key: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+        value: "5"
+      - key: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+        value: "0"
+
+      # --- Redis (Upstash) ---
+      - key: SPRING_DATA_REDIS_URL # rediss://default:<password>@<host>:6379
+        sync: false
+
+      # --- Public URLs (the Vercel app) ---
+      - key: APP_FRONTEND_URL # https://<app>.vercel.app
+        sync: false
+      - key: APP_CORS_ALLOWED_ORIGINS # same as APP_FRONTEND_URL
+        sync: false
+      - key: APP_OAUTH_REDIRECT_BASE_URL # https://<app>.vercel.app/api
+        sync: false
+      - key: APP_SESSION_COOKIE_SECURE
+        value: "true"
+      # Requests arrive through Vercel and Render's proxies; use the visitor's IP (from X-Forwarded-For) for
+      # per-IP rate limits instead of the proxy's.
+      - key: SERVER_FORWARD_HEADERS_STRATEGY
+        value: native
+      - key: SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES
+        value: ".*"
+
+      # --- Email (Brevo SMTP; Render's free tier blocks 587, so use 2525) ---
+      - key: SPRING_MAIL_HOST
+        value: smtp-relay.brevo.com
+      - key: SPRING_MAIL_PORT
+        value: "2525"
+      - key: SPRING_MAIL_SMTP_AUTH
+        value: "true"
+      - key: SPRING_MAIL_SMTP_STARTTLS
+        value: "true"
+      - key: SPRING_MAIL_USERNAME # Brevo SMTP login
+        sync: false
+      - key: SPRING_MAIL_PASSWORD # Brevo SMTP key
+        sync: false
+      - key: APP_MAIL_FROM # e.g. SplitSync <you@gmail.com>, a sender verified in Brevo
+        sync: false
+
+      # --- Optional features (leave empty to hide them) ---
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

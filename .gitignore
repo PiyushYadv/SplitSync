@@ -2,5 +2,6 @@ frontend-old/
 BACKEND_HANDOFF_PLAN.md
 CLAUDE.md
 frontend/BACKEND_INTEGRATION.md
+DEPLOYMENT.md
 # Local Java upgrade tooling; .github/workflows is tracked
 .github/modernize/
