@@ -27,11 +27,16 @@ spring:
       hibernate:
         format_sql: false
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Load lazy associations (payer, splits, members) in batches instead of one query per row.
+        default_batch_fetch_size: 100
 
   flyway:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
+
+  cache:
+    type: redis
 
   data:
     redis:
@@ -40,9 +45,9 @@ spring:
       timeout: 2000ms
 
   session:
-    store-type: redis
     redis:
-      namespace: spring:session:splitsync
+      repository-type: indexed
+      namespace: spring:session
       flush-mode: on_save
       cleanup-cron: "0 * * * * *"
     timeout: 7d
@@ -62,3 +67,4 @@ app:
     cookie-secure: false
   fx:
     cache-ttl-hours: 6
+    base-url: ${APP_FX_BASE_URL:https://api.frankfurter.dev/v1}
